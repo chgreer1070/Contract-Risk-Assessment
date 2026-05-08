@@ -39,13 +39,13 @@ def parse_key_clauses(raw_markdown):
         if type_match:
             clause['clauseType'] = type_match.group(1).strip().strip('[]')
 
-        extract_match = re.search(r'\*\*Extracted Clause\*\*\s*:\s*\[?(.*?)\]?\s*$', block, re.M | re.S)
+        extract_match = re.search(r'\*\*Extracted Clause\*\*\s*:\s*\[?(.*?)(?=\*\*Summary\*\*|\*\*Clause Type\*\*|\Z)', block, re.S)
         if extract_match:
-            clause['extractedClause'] = extract_match.group(1).strip().strip('[]')
+            clause['extractedClause'] = extract_match.group(1).strip().strip('[]').rstrip('-* \n')
 
-        summary_match = re.search(r'\*\*Summary\*\*\s*:\s*\[?(.*?)\]?\s*$', block, re.M | re.S)
+        summary_match = re.search(r'\*\*Summary\*\*\s*:\s*\[?(.*?)(?=\*\*Clause Type\*\*|\*\*Extracted Clause\*\*|\Z)', block, re.S)
         if summary_match:
-            clause['summary'] = summary_match.group(1).strip().strip('[]')
+            clause['summary'] = summary_match.group(1).strip().strip('[]').rstrip('-* \n')
 
         # Infer risk impact from keywords
         text = (clause['extractedClause'] + ' ' + clause['summary']).lower()
@@ -98,9 +98,9 @@ def parse_risk_assessment(raw_text):
         if like_match:
             risk['likelihood'] = like_match.group(1).strip().strip('[]')
 
-        conseq_match = re.search(r'\*\*Potential Consequence\*\*\s*:\s*\[?(.*?)\]?\s*$', block, re.M)
+        conseq_match = re.search(r'\*\*Potential Consequence\*\*\s*:\s*\[?(.*?)(?=\*\*Risk Type\*\*|\*\*Clause Reference\*\*|\Z)', block, re.S)
         if conseq_match:
-            risk['potentialConsequence'] = conseq_match.group(1).strip().strip('[]')
+            risk['potentialConsequence'] = conseq_match.group(1).strip().strip('[]').rstrip('-* \n')
 
         # Compute numeric score
         level_scores = {'High': 8, 'Medium': 5, 'Low': 3}
@@ -144,9 +144,9 @@ def parse_recommended_actions(raw_text):
         if level_match:
             action['riskLevel'] = level_match.group(1).strip().strip('[]')
 
-        act_match = re.search(r'\*\*Recommended Action\*\*\s*:\s*\[?(.*?)\]?\s*$', block, re.M)
+        act_match = re.search(r'\*\*Recommended Action\*\*\s*:\s*\[?(.*?)(?=\*\*Clause\*\*|\*\*Risk Level\*\*|\Z)', block, re.S)
         if act_match:
-            action['action'] = act_match.group(1).strip().strip('[]')
+            action['action'] = act_match.group(1).strip().strip('[]').rstrip('-* \n')
 
         # Infer priority from risk level
         priority_map = {'High': 'Urgent', 'Medium': 'High', 'Low': 'Medium'}

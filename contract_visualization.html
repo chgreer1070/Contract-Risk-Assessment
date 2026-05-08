@@ -650,7 +650,7 @@
 <header class="header">
   <div>
     <h1 style="font-size:1.8rem;font-weight:700;">Contract Risk Assessment Dashboard</h1>
-    <p style="color:var(--text-secondary);font-size:0.9rem;">SaaS Platform Services Agreement — Acme Corp & CloudServe Inc.</p>
+    <p id="headerSubtitle" style="color:var(--text-secondary);font-size:0.9rem;"></p>
   </div>
   <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
 </header>
@@ -858,6 +858,8 @@ function toggleTheme() {
 
 function renderStats() {
   const d = CONTRACT_DATA;
+  const subtitle = d.metadata.title + (d.metadata.parties.length ? ' — ' + d.metadata.parties.join(' & ') : '');
+  document.getElementById('headerSubtitle').textContent = subtitle;
   const highCount = d.riskAssessment.filter(r => r.riskLevel === 'High').length;
   const days = daysUntil(d.metadata.expirationDate);
   const stats = [
