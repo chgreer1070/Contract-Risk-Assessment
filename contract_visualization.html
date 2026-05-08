@@ -1128,7 +1128,7 @@ function renderTreemap() {
     const w = (it.count / topTotal) * W;
     const h = H * 0.55;
     const hue = 120 - (it.avgScore / 10) * 120;
-    html += '<div class="treemap-item" style="left:'+x+'px;top:0;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',65%,42%,0.85)" title="'+it.name+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+it.name+'</span><span style="font-size:0.75rem;opacity:0.8">'+it.count+' risks</span></div>';
+    html += '<div class="treemap-item" style="left:'+x+'px;top:0;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',65%,42%,0.85)" title="'+esc(it.name)+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+esc(it.name)+'</span><span style="font-size:0.75rem;opacity:0.8">'+it.count+' risks</span></div>';
     x += w;
   });
   x = 0;
@@ -1136,7 +1136,7 @@ function renderTreemap() {
     const w = (it.count / botTotal) * W;
     const h = H * 0.45;
     const hue = 120 - (it.avgScore / 10) * 120;
-    html += '<div class="treemap-item" style="left:'+x+'px;top:'+(H*0.55)+'px;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',65%,42%,0.85)" title="'+it.name+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+it.name+'</span><span style="font-size:0.75rem;opacity:0.8">'+it.count+' risks</span></div>';
+    html += '<div class="treemap-item" style="left:'+x+'px;top:'+(H*0.55)+'px;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',65%,42%,0.85)" title="'+esc(it.name)+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+esc(it.name)+'</span><span style="font-size:0.75rem;opacity:0.8">'+it.count+' risks</span></div>';
     x += w;
   });
   container.innerHTML = html;

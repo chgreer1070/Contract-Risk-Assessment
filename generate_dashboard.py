@@ -127,7 +127,7 @@ def parse_risk_assessment(raw_text):
 def parse_recommended_actions(raw_text):
     """Parse LLM recommended actions into structured dicts."""
     actions = []
-    blocks = re.split(r'\n(?=\*\*Clause\*\*)', raw_text)
+    blocks = re.split(r'\n(?=[-*]\s*\*\*Clause\*\*|\*\*Clause\*\*)', raw_text)
     for block in blocks:
         action = {
             'clause': '',
