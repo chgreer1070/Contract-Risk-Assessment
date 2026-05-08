@@ -210,8 +210,8 @@ def generate_dashboard_html(state):
         'metadata': {
             'title': 'Contract Analysis Results',
             'parties': ['Party A', 'Party B'],
-            'effectiveDate': '',
-            'expirationDate': '',
+            'effectiveDate': state.get('effective_date', ''),
+            'expirationDate': state.get('expiration_date', ''),
             'contractValue': 'N/A',
             'jurisdiction': 'N/A'
         },
