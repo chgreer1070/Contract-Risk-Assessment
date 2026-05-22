@@ -644,6 +644,63 @@
                 gap: 1rem;
             }
         }
+
+        /* === Staggered entrance animations === */
+        .card, .stat-card { animation: fadeInUp 0.6s ease both; }
+        @keyframes fadeInUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+        .stats-bar .stat-card:nth-child(1) { animation-delay:0s; }
+        .stats-bar .stat-card:nth-child(2) { animation-delay:0.07s; }
+        .stats-bar .stat-card:nth-child(3) { animation-delay:0.14s; }
+        .stats-bar .stat-card:nth-child(4) { animation-delay:0.21s; }
+        .stats-bar .stat-card:nth-child(5) { animation-delay:0.28s; }
+        .stats-bar .stat-card:nth-child(6) { animation-delay:0.35s; }
+        .gauge-section { animation-delay:0.15s; }
+        .heatmap-section { animation-delay:0.25s; }
+        .radar-section { animation-delay:0.35s; }
+        .pipeline-section { animation-delay:0.4s; }
+        .donut-section { animation-delay:0.45s; }
+        .bar-section { animation-delay:0.5s; }
+        .cards-section { animation-delay:0.55s; }
+        .treemap-section { animation-delay:0.6s; }
+        .timeline-section { animation-delay:0.65s; }
+        .table-section { animation-delay:0.7s; }
+        .comparison-section { animation-delay:0.75s; }
+
+        /* === Rich tooltip === */
+        #tooltip { position:fixed; z-index:1000; pointer-events:none; background:var(--bg-card); border:1px solid var(--border-color); border-radius:10px; padding:0.75rem 1rem; box-shadow:0 8px 24px rgba(0,0,0,0.3); max-width:320px; font-size:0.82rem; color:var(--text-primary); opacity:0; transition:opacity 0.15s; line-height:1.5; }
+        #tooltip.visible { opacity:1; }
+        #tooltip .tt-title { font-weight:700; margin-bottom:0.3rem; }
+        #tooltip .tt-detail { color:var(--text-secondary); }
+
+        /* === Search bar === */
+        .search-input { padding:0.4rem 0.8rem; border-radius:20px; border:1px solid var(--border-color); background:var(--bg-card); color:var(--text-primary); font-size:0.85rem; width:200px; outline:none; transition:border-color 0.2s; }
+        .search-input:focus { border-color:var(--accent); }
+        .search-input::placeholder { color:var(--text-secondary); }
+        .no-results { text-align:center; padding:2rem; color:var(--text-secondary); font-style:italic; display:none; }
+
+        /* === Export button === */
+        .export-btn { background:var(--accent); color:white; border:none; padding:0.5rem 1rem; border-radius:8px; cursor:pointer; font-size:0.85rem; font-weight:600; transition:all 0.2s; }
+        .export-btn:hover { opacity:0.85; }
+
+        /* === Print styles === */
+        @media print {
+            body { background:white !important; color:#1e293b !important; }
+            .card { background:white !important; border:1px solid #e2e8f0 !important; box-shadow:none !important; break-inside:avoid; animation:none !important; }
+            .stat-card { background:white !important; animation:none !important; }
+            .header { color:#1e293b !important; }
+            .header h1 { color:#1e293b !important; }
+            #headerSubtitle { color:#64748b !important; }
+            .theme-toggle, .export-btn, .filter-btn, .search-input, #tooltip { display:none !important; }
+            .section-title { color:#1e293b !important; }
+            .clause-card { background:white !important; border:1px solid #e2e8f0 !important; }
+            .clause-text { max-height:none !important; }
+            .pipeline-connector::after { animation:none !important; }
+            .dashboard { gap:1rem; }
+            .heatmap-cell { color:#1e293b !important; }
+            .actions-table th, .actions-table td { color:#1e293b !important; border-color:#e2e8f0 !important; }
+            .badge { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+            * { animation:none !important; }
+        }
     </style>
 </head>
 <body>
@@ -652,8 +709,12 @@
     <h1 style="font-size:1.8rem;font-weight:700;">Contract Risk Assessment Dashboard</h1>
     <p id="headerSubtitle" style="color:var(--text-secondary);font-size:0.9rem;"></p>
   </div>
-  <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+  <div style="display:flex;gap:0.5rem;align-items:center;">
+    <button class="export-btn" onclick="window.print()" title="Export / Print">Export PDF</button>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+  </div>
 </header>
+<div id="tooltip"></div>
 
 <main class="dashboard">
   <!-- Stats Bar -->
@@ -693,14 +754,16 @@
   <section class="card cards-section">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
       <div class="section-title" style="margin-bottom:0">Key Contract Clauses</div>
-      <div style="display:flex;gap:0.5rem;" id="filterButtons">
+      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;" id="filterButtons">
         <button class="filter-btn active" onclick="filterCards('all')">All</button>
         <button class="filter-btn" onclick="filterCards('High')">High Risk</button>
         <button class="filter-btn" onclick="filterCards('Medium')">Medium</button>
         <button class="filter-btn" onclick="filterCards('Low')">Low</button>
+        <input type="text" class="search-input" id="searchInput" placeholder="Search clauses..." oninput="searchAll(this.value)">
       </div>
     </div>
     <div class="clause-cards-grid" id="clauseCards"></div>
+    <div class="no-results" id="noResults">No matching clauses found.</div>
   </section>
 
   <!-- Treemap and Timeline -->
@@ -892,6 +955,7 @@ function renderGauge() {
       responsive: true, maintainAspectRatio: false,
       rotation: -90, circumference: 180,
       cutout: '75%',
+      animation: { duration: 1200, easing: 'easeOutQuart' },
       plugins: { legend: { display: false }, tooltip: { enabled: false } }
     },
     plugins: [{
@@ -1077,14 +1141,18 @@ function renderClauseCards() {
 }
 
 function filterCards(level) {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('noResults').style.display = 'none';
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   event.target.classList.add('active');
+  let visible = 0;
   document.querySelectorAll('.clause-card').forEach(card => {
-    if (level === 'all' || card.dataset.risk === level) {
-      card.classList.remove('hidden');
-    } else {
-      card.classList.add('hidden');
-    }
+    const show = level === 'all' || card.dataset.risk === level;
+    card.classList.toggle('hidden', !show);
+    if (show) visible++;
+  });
+  document.querySelectorAll('#actionsBody tr').forEach(row => {
+    row.style.display = (level === 'all' || row.dataset.risk === level) ? '' : 'none';
   });
 }
 
@@ -1218,6 +1286,74 @@ function renderComparison() {
   });
 }
 
+function searchAll(query) {
+  const q = query.toLowerCase().trim();
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  if (!q) { document.querySelector('.filter-btn').classList.add('active'); }
+  let visibleCards = 0;
+  document.querySelectorAll('.clause-card').forEach(card => {
+    const text = card.textContent.toLowerCase();
+    const match = !q || text.includes(q);
+    card.classList.toggle('hidden', !match);
+    if (match) visibleCards++;
+  });
+  document.getElementById('noResults').style.display = visibleCards === 0 ? 'block' : 'none';
+  document.querySelectorAll('#actionsBody tr').forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = (!q || text.includes(q)) ? '' : 'none';
+  });
+}
+
+const tooltip = { el: null };
+function showTooltip(e, html) {
+  const tt = tooltip.el;
+  tt.innerHTML = html;
+  tt.classList.add('visible');
+  const x = Math.min(e.clientX + 12, window.innerWidth - 340);
+  const y = Math.min(e.clientY + 12, window.innerHeight - tt.offsetHeight - 10);
+  tt.style.left = x + 'px';
+  tt.style.top = y + 'px';
+}
+function hideTooltip() { tooltip.el.classList.remove('visible'); }
+
+function bindTooltips() {
+  tooltip.el = document.getElementById('tooltip');
+  document.querySelectorAll('.stat-card').forEach((card, i) => {
+    const details = [
+      'Total unique clause types analyzed from the contract',
+      'Average risk score across all '+CONTRACT_DATA.riskAssessment.length+' identified risks',
+      CONTRACT_DATA.riskAssessment.filter(r=>r.riskLevel==='High').length+' of '+CONTRACT_DATA.riskAssessment.length+' risks rated as High severity',
+      'Recommended actions to mitigate identified contract risks',
+      'Total value of the contract over its full term',
+      CONTRACT_DATA.metadata.expirationDate ? 'Contract expires on '+CONTRACT_DATA.metadata.expirationDate : 'No expiration date specified'
+    ];
+    card.addEventListener('mousemove', e => showTooltip(e, '<div class="tt-detail">'+esc(details[i]||'')+'</div>'));
+    card.addEventListener('mouseleave', hideTooltip);
+  });
+  document.querySelectorAll('.heatmap-cell').forEach(cell => {
+    cell.addEventListener('mousemove', function(e) {
+      const title = this.getAttribute('title');
+      if (title) showTooltip(e, '<div class="tt-title">Risk Matrix Cell</div><div class="tt-detail">'+esc(title)+'</div>');
+    });
+    cell.addEventListener('mouseleave', hideTooltip);
+  });
+  document.querySelectorAll('.treemap-item').forEach(item => {
+    item.addEventListener('mousemove', function(e) {
+      const title = this.getAttribute('title');
+      if (title) showTooltip(e, '<div class="tt-title">Clause Group</div><div class="tt-detail">'+esc(title)+'</div>');
+    });
+    item.addEventListener('mouseleave', hideTooltip);
+  });
+  document.querySelectorAll('.timeline-marker').forEach((marker, i) => {
+    const ev = CONTRACT_DATA.timeline[i];
+    if (!ev) return;
+    marker.addEventListener('mousemove', function(e) {
+      showTooltip(e, '<div class="tt-title">'+esc(ev.event)+'</div><div class="tt-detail">Date: '+esc(ev.date)+'<br>Type: '+esc(ev.type)+'</div>');
+    });
+    marker.addEventListener('mouseleave', hideTooltip);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   renderStats();
   renderGauge();
@@ -1231,6 +1367,7 @@ document.addEventListener('DOMContentLoaded', function() {
   renderTimeline();
   renderActionsTable();
   renderComparison();
+  bindTooltips();
 });
 </script>
 </body>
