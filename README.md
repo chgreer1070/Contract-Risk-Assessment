@@ -4,7 +4,7 @@
 This AI-powered tool is not a replacement for legal advice. Always consult a professional lawyer for critical contract decisions.
 
 ## 📌 Project Overview
-This project automates contract analysis, risk assessment, and legal Q&A** using state-of-the-art **Generative AI and NLP** techniques. It extracts key clauses, identifies potential legal risks, and suggests recommendations. A fine-tuned chatbot is also included for **conversational Q&A** on contract-related queries.
+This project automates contract analysis, risk assessment, and legal Q&A using state-of-the-art **Generative AI and NLP** techniques. It extracts key clauses, identifies potential legal risks, and suggests recommendations. A fine-tuned chatbot is also included for **conversational Q&A** on contract-related queries.
 
 ## 🚀 Features
 - **Contract Clause Extraction**: Identifies key clauses (liability, confidentiality, termination, etc.).
@@ -37,10 +37,27 @@ Improve chatbot accuracy with more fine-tuned legal datasets.
 Implement contract comparison for risk benchmarking.
 
 ## 🔧 Setup & Installation
- 1️⃣ Install dependencies:
+
+1️⃣ Install dependencies:
 ```bash
 pip install -r requirements.txt
+```
 
+2️⃣ Set your Hugging Face token (required to call the hosted models). Never hardcode it:
+```bash
+export HF_TOKEN="your_huggingface_token"
+```
+
+3️⃣ Generate `app.py` from the notebook. The Streamlit app is defined in the
+`%%writefile app.py` cell of `Contract_Risk_Assessment.ipynb`; run that notebook
+(e.g. in Google Colab or Jupyter) to produce `app.py`, then launch it:
+```bash
 streamlit run app.py
+```
+
+> **Note:** The notebooks are built for a GPU environment (e.g. Google Colab).
+> `Finetuned_Model_for_Legal_Chatbot.ipynb` fine-tunes a Mistral-7B adapter with
+> Unsloth and 4-bit quantization, and `Contract_Risk_Assessment.ipynb` runs the
+> RAG + risk-assessment workflow and serves the Streamlit UI (via pyngrok on Colab).
 
 
