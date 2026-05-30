@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contract Risk Assessment Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <style>
+        /* ============================================
+           CSS Variables – Dark (default) & Light
+           ============================================ */
+        :root {
+            --bg-primary: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-hover: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #334155;
+            --risk-high: #ef4444;
+            --risk-medium: #f59e0b;
+            --risk-low: #22c55e;
+            --accent: #3b82f6;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #f8fafc;
+            --bg-card: #ffffff;
+            --bg-card-hover: #f1f5f9;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* ============================================
+           CSS Reset
+           ============================================ */
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* ============================================
+           Body
+           ============================================ */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        /* ============================================
+           Header
+           ============================================ */
+        .header {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 2rem 2rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        .header .subtitle {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-top: 0.2rem;
+        }
+
+        /* ============================================
+           Theme Toggle
+           ============================================ */
+        .theme-toggle {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+
+        .theme-toggle:hover {
+            background: var(--bg-card-hover);
+        }
+
+        /* ============================================
+           Dashboard Grid
+           ============================================ */
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 1.5rem;
+            padding: 0 2rem 2rem;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        /* ============================================
+           Card Base
+           ============================================ */
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            animation: fadeIn 0.5s ease;
+        }
+
+        /* ============================================
+           Stats Bar
+           ============================================ */
+        .stats-bar {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .stat-card {
+            flex: 1;
+            min-width: 140px;
+            background: var(--bg-card);
+            border-radius: 10px;
+            padding: 1rem 1.2rem;
+            border-left: 4px solid var(--accent);
+            box-shadow: var(--shadow);
+        }
+
+        .stat-number {
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* ============================================
+           Grid Section Spans
+           ============================================ */
+        .gauge-section {
+            grid-column: 1 / 5;
+        }
+
+        .heatmap-section {
+            grid-column: 5 / 9;
+        }
+
+        .radar-section {
+            grid-column: 9 / 13;
+        }
+
+        .pipeline-section {
+            grid-column: 1 / -1;
+        }
+
+        .donut-section {
+            grid-column: 1 / 5;
+        }
+
+        .bar-section {
+            grid-column: 5 / 13;
+        }
+
+        .cards-section {
+            grid-column: 1 / -1;
+        }
+
+        .treemap-section {
+            grid-column: 1 / 7;
+        }
+
+        .timeline-section {
+            grid-column: 7 / 13;
+        }
+
+        .table-section {
+            grid-column: 1 / -1;
+        }
+
+        .comparison-section {
+            grid-column: 1 / -1;
+        }
+
+        /* ============================================
+           Section Title
+           ============================================ */
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        /* ============================================
+           Heatmap Table
+           ============================================ */
+        .heatmap-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 4px;
+        }
+
+        .heatmap-cell {
+            text-align: center;
+            padding: 0.8rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 1.2rem;
+            transition: transform 0.2s;
+        }
+
+        .heatmap-cell:hover {
+            transform: scale(1.05);
+        }
+
+        .heatmap-table th {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.4rem;
+            font-weight: 600;
+        }
+
+        .heatmap-table td.row-header {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-align: right;
+            padding-right: 0.6rem;
+            white-space: nowrap;
+        }
+
+        /* ============================================
+           Pipeline
+           ============================================ */
+        .pipeline {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            flex-wrap: wrap;
+        }
+
+        .pipeline-node {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 1rem;
+            background: var(--bg-card-hover);
+            border-radius: 12px;
+            min-width: 120px;
+            border: 2px solid var(--risk-low);
+        }
+
+        .pipeline-node .node-count {
+            font-size: 1.6rem;
+            font-weight: 700;
+        }
+
+        .pipeline-node .node-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .pipeline-connector {
+            width: 60px;
+            height: 2px;
+            background: var(--border-color);
+            position: relative;
+        }
+
+        .pipeline-connector::after {
+            content: '';
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: var(--risk-low);
+            border-radius: 50%;
+            top: -3px;
+            animation: moveDot 2s infinite;
+        }
+
+        @keyframes moveDot {
+            0% { left: 0; }
+            100% { left: calc(100% - 8px); }
+        }
+
+        /* ============================================
+           Clause Cards Grid
+           ============================================ */
+        .clause-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1rem;
+        }
+
+        .clause-card {
+            background: var(--bg-card);
+            border-radius: 10px;
+            padding: 1.2rem;
+            border-left: 4px solid var(--accent);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .clause-card:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .clause-card.hidden {
+            display: none;
+        }
+
+        .clause-card .clause-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 0.4rem;
+        }
+
+        .clause-text {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            max-height: 3em;
+            overflow: hidden;
+            transition: max-height 0.3s;
+        }
+
+        .clause-card.expanded .clause-text {
+            max-height: 500px;
+        }
+
+        /* ============================================
+           Badges
+           ============================================ */
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-high {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--risk-high);
+        }
+
+        .badge-medium {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--risk-medium);
+        }
+
+        .badge-low {
+            background: rgba(34, 197, 94, 0.15);
+            color: var(--risk-low);
+        }
+
+        /* ============================================
+           Category Badges
+           ============================================ */
+        .badge-category {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--accent);
+        }
+
+        .badge-category-alt {
+            background: rgba(139, 92, 246, 0.15);
+            color: #8b5cf6;
+        }
+
+        /* ============================================
+           Filter Buttons
+           ============================================ */
+        .filter-btn {
+            padding: 0.4rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            background: transparent;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .filter-btn.active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .filter-btn:hover:not(.active) {
+            background: var(--bg-card-hover);
+        }
+
+        /* ============================================
+           Treemap
+           ============================================ */
+        .treemap-container {
+            position: relative;
+            height: 280px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .treemap-item {
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            border: 2px solid var(--bg-primary);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: white;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+        }
+
+        .treemap-item:hover {
+            opacity: 0.85;
+        }
+
+        /* ============================================
+           Timeline
+           ============================================ */
+        .timeline-bar {
+            position: relative;
+            height: 6px;
+            background: var(--border-color);
+            border-radius: 3px;
+            margin: 3rem 1rem 4rem;
+        }
+
+        .timeline-marker {
+            position: absolute;
+            top: -8px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            transform: translateX(-50%);
+            border: 3px solid var(--bg-card);
+        }
+
+        .timeline-label {
+            position: absolute;
+            top: 20px;
+            transform: translateX(-50%);
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            text-align: center;
+            width: 100px;
+        }
+
+        .timeline-today {
+            position: absolute;
+            top: -16px;
+            width: 2px;
+            height: 38px;
+            background: var(--risk-high);
+        }
+
+        .timeline-today-label {
+            position: absolute;
+            top: -28px;
+            transform: translateX(-50%);
+            font-size: 0.65rem;
+            color: var(--risk-high);
+            font-weight: 600;
+        }
+
+        /* ============================================
+           Actions Table
+           ============================================ */
+        .actions-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .actions-table th {
+            text-align: left;
+            padding: 0.8rem;
+            border-bottom: 2px solid var(--border-color);
+            cursor: pointer;
+            user-select: none;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .actions-table th:hover {
+            color: var(--text-primary);
+        }
+
+        .actions-table td {
+            padding: 0.8rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .actions-table tr:hover {
+            background: var(--bg-card-hover);
+        }
+
+        /* ============================================
+           Priority Dots
+           ============================================ */
+        .priority-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+
+        .priority-urgent {
+            background: var(--risk-high);
+        }
+
+        .priority-high-p {
+            background: var(--risk-medium);
+        }
+
+        .priority-medium-p {
+            background: var(--accent);
+        }
+
+        .priority-low-p {
+            background: var(--risk-low);
+        }
+
+        /* ============================================
+           Chart Canvas Wrapper
+           ============================================ */
+        .chart-wrap {
+            position: relative;
+            width: 100%;
+        }
+
+        .gauge-section .chart-wrap {
+            height: 200px;
+        }
+
+        /* ============================================
+           Animations
+           ============================================ */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ============================================
+           Responsive – Tablet (max-width: 1024px)
+           ============================================ */
+        @media (max-width: 1024px) {
+            .dashboard {
+                grid-template-columns: repeat(6, 1fr);
+            }
+
+            .gauge-section,
+            .heatmap-section,
+            .radar-section,
+            .donut-section {
+                grid-column: span 3;
+            }
+
+            .bar-section,
+            .treemap-section,
+            .timeline-section {
+                grid-column: span 6;
+            }
+
+            .cards-section,
+            .pipeline-section,
+            .stats-bar,
+            .table-section,
+            .comparison-section {
+                grid-column: 1 / -1;
+            }
+        }
+
+        /* ============================================
+           Responsive – Mobile (max-width: 640px)
+           ============================================ */
+        @media (max-width: 640px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+                padding: 0 1rem 1rem;
+            }
+
+            .dashboard > * {
+                grid-column: 1 / -1 !important;
+            }
+
+            .stats-bar {
+                flex-direction: column;
+            }
+
+            .pipeline {
+                flex-direction: column;
+            }
+
+            .pipeline-connector {
+                width: 2px;
+                height: 30px;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+        }
+
+        /* === Staggered entrance animations === */
+        .card, .stat-card { animation: fadeInUp 0.6s ease both; }
+        @keyframes fadeInUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+        .stats-bar .stat-card:nth-child(1) { animation-delay:0s; }
+        .stats-bar .stat-card:nth-child(2) { animation-delay:0.07s; }
+        .stats-bar .stat-card:nth-child(3) { animation-delay:0.14s; }
+        .stats-bar .stat-card:nth-child(4) { animation-delay:0.21s; }
+        .stats-bar .stat-card:nth-child(5) { animation-delay:0.28s; }
+        .stats-bar .stat-card:nth-child(6) { animation-delay:0.35s; }
+        .gauge-section { animation-delay:0.15s; }
+        .heatmap-section { animation-delay:0.25s; }
+        .radar-section { animation-delay:0.35s; }
+        .pipeline-section { animation-delay:0.4s; }
+        .donut-section { animation-delay:0.45s; }
+        .bar-section { animation-delay:0.5s; }
+        .cards-section { animation-delay:0.55s; }
+        .treemap-section { animation-delay:0.6s; }
+        .timeline-section { animation-delay:0.65s; }
+        .table-section { animation-delay:0.7s; }
+        .comparison-section { animation-delay:0.75s; }
+
+        /* === Rich tooltip === */
+        #tooltip { position:fixed; z-index:1000; pointer-events:none; background:var(--bg-card); border:1px solid var(--border-color); border-radius:10px; padding:0.75rem 1rem; box-shadow:0 8px 24px rgba(0,0,0,0.3); max-width:320px; font-size:0.82rem; color:var(--text-primary); opacity:0; transition:opacity 0.15s; line-height:1.5; }
+        #tooltip.visible { opacity:1; }
+        #tooltip .tt-title { font-weight:700; margin-bottom:0.3rem; }
+        #tooltip .tt-detail { color:var(--text-secondary); }
+
+        /* === Search bar === */
+        .search-input { padding:0.4rem 0.8rem; border-radius:20px; border:1px solid var(--border-color); background:var(--bg-card); color:var(--text-primary); font-size:0.85rem; width:200px; outline:none; transition:border-color 0.2s; }
+        .search-input:focus { border-color:var(--accent); }
+        .search-input::placeholder { color:var(--text-secondary); }
+        .no-results { text-align:center; padding:2rem; color:var(--text-secondary); font-style:italic; display:none; }
+
+        /* === Export button === */
+        .export-btn { background:var(--accent); color:white; border:none; padding:0.5rem 1rem; border-radius:8px; cursor:pointer; font-size:0.85rem; font-weight:600; transition:all 0.2s; }
+        .export-btn:hover { opacity:0.85; }
+
+        /* === Print styles === */
+        @media print {
+            body { background:white !important; color:#1e293b !important; }
+            .card { background:white !important; border:1px solid #e2e8f0 !important; box-shadow:none !important; break-inside:avoid; animation:none !important; }
+            .stat-card { background:white !important; animation:none !important; }
+            .header { color:#1e293b !important; }
+            .header h1 { color:#1e293b !important; }
+            #headerSubtitle { color:#64748b !important; }
+            .theme-toggle, .export-btn, .filter-btn, .search-input, #tooltip { display:none !important; }
+            .section-title { color:#1e293b !important; }
+            .clause-card { background:white !important; border:1px solid #e2e8f0 !important; }
+            .clause-text { max-height:none !important; }
+            .pipeline-connector::after { animation:none !important; }
+            .dashboard { gap:1rem; }
+            .heatmap-cell { color:#1e293b !important; }
+            .actions-table th, .actions-table td { color:#1e293b !important; border-color:#e2e8f0 !important; }
+            .badge { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+            * { animation:none !important; }
+        }
+    </style>
+</head>
+<body>
+<header class="header">
+  <div>
+    <h1 style="font-size:1.8rem;font-weight:700;">Contract Risk Assessment Dashboard</h1>
+    <p id="headerSubtitle" style="color:var(--text-secondary);font-size:0.9rem;"></p>
+  </div>
+  <div style="display:flex;gap:0.5rem;align-items:center;">
+    <button class="export-btn" onclick="window.print()" title="Export / Print">Export PDF</button>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+  </div>
+</header>
+<div id="tooltip"></div>
+
+<main class="dashboard">
+  <!-- Stats Bar -->
+  <section class="stats-bar" id="statsBar"></section>
+
+  <!-- Row 2: Gauge, Heatmap, Radar -->
+  <section class="card gauge-section">
+    <div class="section-title">Overall Risk Score</div>
+    <div class="chart-wrap" style="height:220px"><canvas id="gaugeChart"></canvas></div>
+  </section>
+  <section class="card heatmap-section">
+    <div class="section-title">Risk Matrix</div>
+    <div id="heatmapContainer"></div>
+  </section>
+  <section class="card radar-section">
+    <div class="section-title">Risk Profile by Category</div>
+    <div class="chart-wrap" style="height:250px"><canvas id="radarChart"></canvas></div>
+  </section>
+
+  <!-- Pipeline Flow -->
+  <section class="card pipeline-section">
+    <div class="section-title">Analysis Pipeline</div>
+    <div class="pipeline" id="pipelineFlow"></div>
+  </section>
+
+  <!-- Donut and Horizontal Bar -->
+  <section class="card donut-section">
+    <div class="section-title">Clause Distribution</div>
+    <div class="chart-wrap" style="height:260px"><canvas id="donutChart"></canvas></div>
+  </section>
+  <section class="card bar-section">
+    <div class="section-title">Risk Breakdown by Category</div>
+    <div class="chart-wrap" style="height:260px"><canvas id="barChart"></canvas></div>
+  </section>
+
+  <!-- Clause Cards -->
+  <section class="card cards-section">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
+      <div class="section-title" style="margin-bottom:0">Key Contract Clauses</div>
+      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;" id="filterButtons">
+        <button class="filter-btn active" onclick="filterCards('all')">All</button>
+        <button class="filter-btn" onclick="filterCards('High')">High Risk</button>
+        <button class="filter-btn" onclick="filterCards('Medium')">Medium</button>
+        <button class="filter-btn" onclick="filterCards('Low')">Low</button>
+        <input type="text" class="search-input" id="searchInput" placeholder="Search clauses..." oninput="searchAll(this.value)">
+      </div>
+    </div>
+    <div class="clause-cards-grid" id="clauseCards"></div>
+    <div class="no-results" id="noResults">No matching clauses found.</div>
+  </section>
+
+  <!-- Treemap and Timeline -->
+  <section class="card treemap-section">
+    <div class="section-title">Clause Risk Treemap</div>
+    <div class="treemap-container" id="treemapContainer"></div>
+  </section>
+  <section class="card timeline-section">
+    <div class="section-title">Contract Timeline</div>
+    <div id="timelineContainer" style="padding:1rem 0;"></div>
+  </section>
+
+  <!-- Actions Table -->
+  <section class="card table-section">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
+      <div class="section-title" style="margin-bottom:0">Recommended Actions</div>
+      <select id="tableFilter" onchange="filterTable(this.value)" style="padding:0.4rem 0.8rem;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-primary);font-size:0.85rem;">
+        <option value="all">All Risk Levels</option>
+        <option value="High">High</option>
+        <option value="Medium">Medium</option>
+        <option value="Low">Low</option>
+      </select>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="actions-table" id="actionsTable">
+        <thead>
+          <tr>
+            <th onclick="sortTable(0)">Priority ↕</th>
+            <th onclick="sortTable(1)">Clause ↕</th>
+            <th onclick="sortTable(2)">Risk Level ↕</th>
+            <th onclick="sortTable(3)">Recommended Action ↕</th>
+            <th onclick="sortTable(4)">Category ↕</th>
+          </tr>
+        </thead>
+        <tbody id="actionsBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Risk Comparison -->
+  <section class="card comparison-section">
+    <div class="section-title">Risk Comparison by Category</div>
+    <div class="chart-wrap" style="height:300px"><canvas id="comparisonChart"></canvas></div>
+  </section>
+</main>
+<script>
+const CONTRACT_DATA = {
+  metadata: {
+    title: "SaaS Platform Services Agreement",
+    parties: ["Acme Corp (Client)", "CloudServe Inc. (Provider)"],
+    effectiveDate: "2025-01-15",
+    expirationDate: "2027-01-14",
+    contractValue: "$480,000",
+    jurisdiction: "State of Delaware, USA"
+  },
+  keyClauses: [
+    {id:"KC-001",clauseType:"Liability",section:"Section 8.1",extractedClause:"Provider's total aggregate liability shall not exceed the total fees paid by Client in the 12-month period preceding the claim. In no event shall Provider be liable for indirect, incidental, or consequential damages.",summary:"Caps provider liability to 12 months of fees paid. Excludes indirect damages.",riskImpact:"High"},
+    {id:"KC-002",clauseType:"Termination",section:"Section 9.2",extractedClause:"Either party may terminate this Agreement with 30 days written notice upon material breach that remains uncured for 15 business days after notification.",summary:"Allows termination for uncured material breach with 30-day notice period.",riskImpact:"Medium"},
+    {id:"KC-003",clauseType:"Confidentiality",section:"Section 5.1",extractedClause:"Both parties agree to maintain strict confidentiality of proprietary information for the duration of this Agreement and 3 years following termination.",summary:"Mutual NDA obligations surviving 3 years post-termination.",riskImpact:"Low"},
+    {id:"KC-004",clauseType:"Indemnification",section:"Section 8.3",extractedClause:"Provider shall indemnify and hold harmless Client against third-party claims alleging that the Service infringes intellectual property rights, excluding claims arising from Client modifications.",summary:"Provider indemnifies against third-party IP infringement claims only.",riskImpact:"High"},
+    {id:"KC-005",clauseType:"Data Protection",section:"Section 6.1",extractedClause:"Provider shall comply with GDPR, CCPA, and applicable data protection laws. Provider must notify Client of any data breach within 72 hours of discovery.",summary:"Requires GDPR/CCPA compliance with 72-hour breach notification.",riskImpact:"High"},
+    {id:"KC-006",clauseType:"IP Rights",section:"Section 7.1",extractedClause:"Client retains all intellectual property rights to its data and content. Provider retains all rights to the platform, including improvements made during the term.",summary:"Clear IP separation: client owns data, provider owns platform.",riskImpact:"Medium"},
+    {id:"KC-007",clauseType:"SLA/Performance",section:"Section 4.1",extractedClause:"Provider guarantees 99.9% monthly uptime. Service credits of 5% of monthly fees apply for each 0.1% below the SLA target, capped at 30% of monthly fees.",summary:"99.9% uptime SLA with capped service credits for downtime.",riskImpact:"Medium"},
+    {id:"KC-008",clauseType:"Force Majeure",section:"Section 10.1",extractedClause:"Neither party shall be liable for delays caused by events beyond reasonable control, including natural disasters, war, or pandemic, for a period not exceeding 90 days.",summary:"Excuses performance for uncontrollable events up to 90 days.",riskImpact:"Low"}
+  ],
+  riskAssessment: [
+    {riskType:"Legal",clauseReference:"Section 8.1 - Liability Cap",riskLevel:"High",likelihood:"Possible",potentialConsequence:"Client bears unrecoverable losses exceeding the liability cap.",score:8},
+    {riskType:"Legal",clauseReference:"Section 8.3 - Indemnification",riskLevel:"High",likelihood:"Unlikely",potentialConsequence:"Narrow indemnification may leave client exposed to non-IP claims.",score:7},
+    {riskType:"Compliance",clauseReference:"Section 6.1 - Data Protection",riskLevel:"High",likelihood:"Possible",potentialConsequence:"Regulatory fines up to 4% of annual revenue for GDPR non-compliance.",score:9},
+    {riskType:"Compliance",clauseReference:"Section 5.1 - Confidentiality",riskLevel:"Low",likelihood:"Unlikely",potentialConsequence:"Limited enforcement for confidentiality breaches post-termination.",score:3},
+    {riskType:"Financial",clauseReference:"Section 4.1 - SLA Credits",riskLevel:"Medium",likelihood:"Possible",potentialConsequence:"Capped credits may not compensate for business losses during outages.",score:6},
+    {riskType:"Financial",clauseReference:"Section 8.1 - Liability Cap",riskLevel:"High",likelihood:"Likely",potentialConsequence:"12-month fee cap limits financial recovery in catastrophic failures.",score:8},
+    {riskType:"Reputational",clauseReference:"Section 6.1 - Data Breach",riskLevel:"Medium",likelihood:"Possible",potentialConsequence:"72-hour notification may delay public response, increasing damage.",score:5},
+    {riskType:"Reputational",clauseReference:"Section 9.2 - Termination",riskLevel:"Low",likelihood:"Unlikely",potentialConsequence:"Abrupt termination could disrupt services and impact end-user trust.",score:3},
+    {riskType:"Operational",clauseReference:"Section 10.1 - Force Majeure",riskLevel:"Medium",likelihood:"Possible",potentialConsequence:"90-day force majeure may cause prolonged service disruption.",score:5},
+    {riskType:"Operational",clauseReference:"Section 4.1 - Uptime SLA",riskLevel:"Medium",likelihood:"Likely",potentialConsequence:"99.9% SLA allows ~8.7 hours downtime, insufficient for critical ops.",score:6},
+    {riskType:"Legal",clauseReference:"Section 7.1 - IP Rights",riskLevel:"Medium",likelihood:"Possible",potentialConsequence:"Provider retaining improvement rights may limit vendor switching.",score:5},
+    {riskType:"Compliance",clauseReference:"Section 9.2 - Termination",riskLevel:"Low",likelihood:"Unlikely",potentialConsequence:"No explicit data return/deletion obligations upon termination.",score:4}
+  ],
+  recommendedActions: [
+    {clause:"Section 8.1 - Liability Cap",riskLevel:"High",action:"Negotiate to increase liability cap to 2x annual fees. Add carve-outs for gross negligence.",priority:"Urgent",category:"Negotiation"},
+    {clause:"Section 8.3 - Indemnification",riskLevel:"High",action:"Expand indemnification to cover data breaches and regulatory fines.",priority:"Urgent",category:"Negotiation"},
+    {clause:"Section 6.1 - Data Protection",riskLevel:"High",action:"Require annual third-party security audits. Add data processing agreement.",priority:"Urgent",category:"Compliance"},
+    {clause:"Section 5.1 - Confidentiality",riskLevel:"Low",action:"Add specific remedies and liquidated damages for confidentiality breaches.",priority:"Low",category:"Legal Review"},
+    {clause:"Section 4.1 - SLA Credits",riskLevel:"Medium",action:"Negotiate higher service credit percentages and remove the 30% cap.",priority:"High",category:"Negotiation"},
+    {clause:"Section 8.1 - Liability (Financial)",riskLevel:"High",action:"Include cyber insurance requirement of minimum $5M coverage.",priority:"Urgent",category:"Compliance"},
+    {clause:"Section 6.1 - Data Breach",riskLevel:"Medium",action:"Reduce breach notification to 48 hours. Require provider to cover costs.",priority:"High",category:"Negotiation"},
+    {clause:"Section 9.2 - Termination",riskLevel:"Low",action:"Add explicit data portability and deletion requirements upon termination.",priority:"Medium",category:"Legal Review"},
+    {clause:"Section 10.1 - Force Majeure",riskLevel:"Medium",action:"Reduce force majeure period to 60 days with auto-termination right.",priority:"Medium",category:"Negotiation"},
+    {clause:"Section 4.1 - Uptime SLA",riskLevel:"Medium",action:"Negotiate 99.95% uptime for critical services with escalating credits.",priority:"High",category:"Negotiation"},
+    {clause:"Section 7.1 - IP Rights",riskLevel:"Medium",action:"Negotiate license-back provision for improvements from client data.",priority:"Medium",category:"Legal Review"},
+    {clause:"Section 9.2 - Data Return",riskLevel:"Low",action:"Add 90-day post-termination data access with certified deletion.",priority:"Medium",category:"Compliance"}
+  ],
+  pipelineStages: [
+    {name:"Extract Chunks",icon:"📄",status:"complete",duration:"12.3s"},
+    {name:"Embed & Store",icon:"🔢",status:"complete",duration:"8.7s"},
+    {name:"Key Clauses",icon:"📋",status:"complete",duration:"15.1s"},
+    {name:"Risk Assessment",icon:"⚠️",status:"complete",duration:"18.4s"},
+    {name:"Actions",icon:"✅",status:"complete",duration:"11.2s"}
+  ],
+  timeline: [
+    {date:"2025-01-15",event:"Contract Effective",type:"milestone"},
+    {date:"2025-07-15",event:"Mid-term Review",type:"review"},
+    {date:"2026-01-15",event:"Annual Renewal",type:"deadline"},
+    {date:"2026-12-15",event:"Termination Notice",type:"deadline"},
+    {date:"2027-01-14",event:"Expiration",type:"milestone"}
+  ],
+  overallRiskScore: 6.4
+};
+
+const COLORS = {High:'#ef4444',Medium:'#f59e0b',Low:'#22c55e'};
+const PRIORITY_ORDER = {Urgent:0,High:1,Medium:2,Low:3};
+const TYPE_COLORS = ['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#22c55e','#06b6d4','#f97316','#6366f1'];
+let chartInstances = {};
+
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function getRiskColor(level) { return COLORS[level] || '#94a3b8'; }
+
+function countByLevel(arr, field) {
+  const c = {High:0,Medium:0,Low:0};
+  arr.forEach(r => { if(c[r[field]] !== undefined) c[r[field]]++; });
+  return c;
+}
+
+function daysUntil(dateStr) {
+  if (!dateStr) return 'N/A';
+  const target = new Date(dateStr);
+  if (isNaN(target.getTime())) return 'N/A';
+  return Math.ceil((target - new Date()) / (1000*60*60*24));
+}
+
+function toggleTheme() {
+  const html = document.documentElement;
+  const btn = document.querySelector('.theme-toggle');
+  if (html.getAttribute('data-theme') === 'dark') {
+    html.setAttribute('data-theme', 'light');
+    btn.textContent = '☀️';
+  } else {
+    html.setAttribute('data-theme', 'dark');
+    btn.textContent = '🌙';
+  }
+  Object.values(chartInstances).forEach(c => c.destroy());
+  chartInstances = {};
+  renderGauge();
+  renderRadar();
+  renderDonut();
+  renderBarChart();
+  renderComparison();
+}
+
+function renderStats() {
+  const d = CONTRACT_DATA;
+  const subtitle = d.metadata.title + (d.metadata.parties.length ? ' — ' + d.metadata.parties.join(' & ') : '');
+  document.getElementById('headerSubtitle').textContent = subtitle;
+  const highCount = d.riskAssessment.filter(r => r.riskLevel === 'High').length;
+  const days = daysUntil(d.metadata.expirationDate);
+  const stats = [
+    {label:'Total Clauses',value:d.keyClauses.length,color:'var(--accent)',icon:'📋'},
+    {label:'Risk Score',value:d.overallRiskScore+'/10',color:'var(--risk-high)',icon:'⚡'},
+    {label:'High Risks',value:highCount,color:'var(--risk-high)',icon:'🔴'},
+    {label:'Action Items',value:d.recommendedActions.length,color:'var(--risk-medium)',icon:'📝'},
+    {label:'Contract Value',value:d.metadata.contractValue,color:'var(--risk-low)',icon:'💰'},
+    {label:'Days Remaining',value:days,color:days<180?'var(--risk-medium)':'var(--risk-low)',icon:'📅'}
+  ];
+  document.getElementById('statsBar').innerHTML = stats.map(s =>
+    '<div class="stat-card" style="border-left-color:'+s.color+'"><div style="display:flex;justify-content:space-between;align-items:center"><span class="stat-number">'+s.value+'</span><span style="font-size:1.5rem">'+s.icon+'</span></div><div class="stat-label">'+s.label+'</div></div>'
+  ).join('');
+}
+
+function renderGauge() {
+  const score = CONTRACT_DATA.overallRiskScore;
+  const ctx = document.getElementById('gaugeChart').getContext('2d');
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  chartInstances.gauge = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [3, 3, 4, 10 - score],
+        backgroundColor: ['#22c55e','#f59e0b','#ef4444', isDark ? '#1e293b' : '#f1f5f9'],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      rotation: -90, circumference: 180,
+      cutout: '75%',
+      animation: { duration: 1200, easing: 'easeOutQuart' },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } }
+    },
+    plugins: [{
+      id: 'gaugeNeedle',
+      afterDraw(chart) {
+        const {ctx, chartArea} = chart;
+        const cx = (chartArea.left + chartArea.right) / 2;
+        const cy = chartArea.bottom - 10;
+        const angle = Math.PI + (score / 10) * Math.PI;
+        const len = (chartArea.right - chartArea.left) / 2 * 0.65;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+        ctx.beginPath();
+        ctx.moveTo(0, -4);
+        ctx.lineTo(len, 0);
+        ctx.lineTo(0, 4);
+        ctx.fillStyle = isDark ? '#f1f5f9' : '#1e293b';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        ctx.fillStyle = isDark ? '#f1f5f9' : '#1e293b';
+        ctx.fill();
+        ctx.restore();
+        ctx.save();
+        ctx.font = 'bold 2rem -apple-system, sans-serif';
+        ctx.fillStyle = isDark ? '#f1f5f9' : '#1e293b';
+        ctx.textAlign = 'center';
+        ctx.fillText(score.toFixed(1), cx, cy - 15);
+        ctx.font = '0.8rem -apple-system, sans-serif';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText('out of 10', cx, cy + 5);
+        ctx.restore();
+      }
+    }]
+  });
+}
+
+function renderHeatmap() {
+  const risks = CONTRACT_DATA.riskAssessment;
+  const levels = ['High','Medium','Low'];
+  const likelihoods = ['Unlikely','Possible','Likely'];
+  const matrix = {};
+  levels.forEach(l => { matrix[l] = {}; likelihoods.forEach(k => matrix[l][k] = []); });
+  risks.forEach(r => { if(matrix[r.riskLevel] && matrix[r.riskLevel][r.likelihood]) matrix[r.riskLevel][r.likelihood].push(r); });
+  let html = '<table class="heatmap-table"><thead><tr><th style="color:var(--text-secondary);font-size:0.75rem"></th>';
+  likelihoods.forEach(l => html += '<th style="color:var(--text-secondary);font-size:0.75rem;text-align:center">'+l+'</th>');
+  html += '</tr></thead><tbody>';
+  levels.forEach(level => {
+    html += '<tr><td style="color:var(--text-secondary);font-size:0.75rem;font-weight:600;padding-right:0.5rem">'+level+'</td>';
+    likelihoods.forEach(lk => {
+      const count = matrix[level][lk].length;
+      const intensity = Math.min(count / 3, 1);
+      const h = 120 - intensity * 120;
+      const bg = count === 0 ? 'var(--bg-card-hover)' : 'hsla('+h+',70%,45%,'+(.3+intensity*.5)+')';
+      html += '<td class="heatmap-cell" style="background:'+bg+'" onclick="filterByHeatmap(\''+level+'\',\''+lk+'\')" title="'+level+' risk, '+lk+': '+count+' items">'+count+'</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('heatmapContainer').innerHTML = html;
+}
+
+function renderRadar() {
+  const ctx = document.getElementById('radarChart').getContext('2d');
+  const types = ['Legal','Compliance','Financial','Reputational','Operational'];
+  const scores = types.map(t => {
+    const items = CONTRACT_DATA.riskAssessment.filter(r => r.riskType === t);
+    return items.length ? Math.max(...items.map(r => r.score)) : 0;
+  });
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  chartInstances.radar = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: types,
+      datasets: [{
+        label: 'Max Risk Score',
+        data: scores,
+        backgroundColor: 'rgba(59,130,246,0.2)',
+        borderColor: '#3b82f6',
+        borderWidth: 2,
+        pointBackgroundColor: '#3b82f6',
+        pointRadius: 5,
+        pointHoverRadius: 8
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        r: {
+          beginAtZero: true, max: 10,
+          grid: { color: isDark ? 'rgba(148,163,184,0.15)' : 'rgba(100,116,139,0.15)' },
+          angleLines: { color: isDark ? 'rgba(148,163,184,0.15)' : 'rgba(100,116,139,0.15)' },
+          pointLabels: { color: isDark ? '#f1f5f9' : '#1e293b', font: { size: 11 } },
+          ticks: { display: false }
+        }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+function renderPipeline() {
+  const stages = CONTRACT_DATA.pipelineStages;
+  let html = '';
+  stages.forEach((s, i) => {
+    html += '<div class="pipeline-node"><span style="font-size:1.5rem">'+s.icon+'</span><span style="font-size:0.8rem;font-weight:600;margin-top:0.3rem">'+s.name+'</span><span style="font-size:0.7rem;color:var(--text-secondary)">'+s.duration+'</span><span style="color:var(--risk-low);font-size:0.75rem">✓ Complete</span></div>';
+    if (i < stages.length - 1) html += '<div class="pipeline-connector"></div>';
+  });
+  document.getElementById('pipelineFlow').innerHTML = html;
+}
+
+function renderDonut() {
+  const ctx = document.getElementById('donutChart').getContext('2d');
+  const types = [...new Set(CONTRACT_DATA.keyClauses.map(c => c.clauseType))];
+  const counts = types.map(t => CONTRACT_DATA.keyClauses.filter(c => c.clauseType === t).length);
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  chartInstances.donut = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: types,
+      datasets: [{ data: counts, backgroundColor: TYPE_COLORS.slice(0, types.length), borderWidth: 2, borderColor: isDark ? '#1e293b' : '#ffffff' }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '60%',
+      plugins: {
+        legend: { position: 'bottom', labels: { color: isDark ? '#f1f5f9' : '#1e293b', padding: 12, font: { size: 11 } } }
+      }
+    },
+    plugins: [{
+      id: 'centerText',
+      afterDraw(chart) {
+        const {ctx, chartArea} = chart;
+        const cx = (chartArea.left + chartArea.right) / 2;
+        const cy = (chartArea.top + chartArea.bottom) / 2;
+        ctx.save();
+        ctx.font = 'bold 1.8rem -apple-system, sans-serif';
+        ctx.fillStyle = isDark ? '#f1f5f9' : '#1e293b';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(CONTRACT_DATA.keyClauses.length, cx, cy - 8);
+        ctx.font = '0.7rem -apple-system, sans-serif';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText('Clauses', cx, cy + 14);
+        ctx.restore();
+      }
+    }]
+  });
+}
+
+function renderBarChart() {
+  const ctx = document.getElementById('barChart').getContext('2d');
+  const types = ['Legal','Compliance','Financial','Reputational','Operational'];
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const datasets = ['Low','Medium','High'].map(level => ({
+    label: level,
+    data: types.map(t => CONTRACT_DATA.riskAssessment.filter(r => r.riskType === t && r.riskLevel === level).length),
+    backgroundColor: COLORS[level] + 'cc',
+    borderRadius: 4
+  }));
+  chartInstances.bar = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: types, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      scales: {
+        x: { stacked: true, grid: { color: isDark ? 'rgba(148,163,184,0.1)' : 'rgba(100,116,139,0.1)' }, ticks: { color: isDark ? '#94a3b8' : '#64748b' } },
+        y: { stacked: true, grid: { display: false }, ticks: { color: isDark ? '#f1f5f9' : '#1e293b', font: { size: 12 } } }
+      },
+      plugins: { legend: { position: 'top', labels: { color: isDark ? '#f1f5f9' : '#1e293b', padding: 15, usePointStyle: true, pointStyle: 'circle' } } }
+    }
+  });
+}
+
+function renderClauseCards() {
+  const html = CONTRACT_DATA.keyClauses.map(c => {
+    const color = getRiskColor(c.riskImpact);
+    const badgeClass = 'badge-' + c.riskImpact.toLowerCase();
+    return '<div class="clause-card" data-risk="'+esc(c.riskImpact)+'" style="border-left-color:'+color+'" onclick="this.classList.toggle(\'expanded\')"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem"><span class="badge" style="background:'+color+'22;color:'+color+'">'+esc(c.clauseType)+'</span><span class="badge '+badgeClass+'">'+esc(c.riskImpact)+'</span></div><div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.4rem">'+esc(c.section)+'</div><div class="clause-text">'+esc(c.extractedClause)+'</div><div style="margin-top:0.5rem;font-size:0.85rem;font-style:italic;color:var(--text-secondary)">'+esc(c.summary)+'</div><div style="margin-top:0.4rem;font-size:0.7rem;color:var(--accent)">Click to expand</div></div>';
+  }).join('');
+  document.getElementById('clauseCards').innerHTML = html;
+}
+
+function filterCards(level) {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('noResults').style.display = 'none';
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  let visible = 0;
+  document.querySelectorAll('.clause-card').forEach(card => {
+    const show = level === 'all' || card.dataset.risk === level;
+    card.classList.toggle('hidden', !show);
+    if (show) visible++;
+  });
+  document.querySelectorAll('#actionsBody tr').forEach(row => {
+    row.style.display = (level === 'all' || row.dataset.risk === level) ? '' : 'none';
+  });
+}
+
+function filterByHeatmap(riskLevel, likelihood) {
+  const matching = CONTRACT_DATA.riskAssessment.filter(r => r.riskLevel === riskLevel && r.likelihood === likelihood);
+  const matchTypes = matching.map(r => r.clauseReference);
+  document.querySelectorAll('.clause-card').forEach(card => {
+    const section = card.querySelector('div[style*="text-secondary"]').textContent;
+    const hasMatch = matchTypes.some(ref => ref.includes(section.replace('Section ','').split(' ')[0]));
+    if (hasMatch || matching.length === 0) {
+      card.classList.remove('hidden');
+    } else {
+      card.classList.add('hidden');
+    }
+  });
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+}
+
+function renderTreemap() {
+  const container = document.getElementById('treemapContainer');
+  const W = container.offsetWidth || 500;
+  const H = 280;
+  const types = [...new Set(CONTRACT_DATA.keyClauses.map(c => c.clauseType))];
+  const items = types.map((t, i) => {
+    const risks = CONTRACT_DATA.riskAssessment.filter(r => r.clauseReference.toLowerCase().includes(t.toLowerCase().split('/')[0]));
+    const count = Math.max(risks.length, 1);
+    const avgScore = risks.length ? risks.reduce((a, r) => a + r.score, 0) / risks.length : 3;
+    return { name: t, count, avgScore, color: TYPE_COLORS[i] };
+  });
+  const total = items.reduce((a, it) => a + it.count, 0);
+  let html = '';
+  let x = 0;
+  items.sort((a, b) => b.count - a.count);
+  const half = Math.ceil(items.length / 2);
+  const topRow = items.slice(0, half);
+  const botRow = items.slice(half);
+  const topTotal = topRow.reduce((a, it) => a + it.count, 0);
+  const botTotal = botRow.reduce((a, it) => a + it.count, 0);
+  x = 0;
+  topRow.forEach(it => {
+    const w = (it.count / topTotal) * W;
+    const h = H * 0.55;
+    const hue = 120 - (it.avgScore / 10) * 120;
+    html += '<div class="treemap-item" style="left:'+x+'px;top:0;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',65%,42%,0.85)" title="'+esc(it.name)+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+esc(it.name)+'</span><span style="font-size:0.75rem;opacity:0.8">'+it.count+' risks</span></div>';
+    x += w;
+  });
+  x = 0;
+  botRow.forEach(it => {
+    const w = (it.count / botTotal) * W;
+    const h = H * 0.45;
+    const hue = 120 - (it.avgScore / 10) * 120;
+    html += '<div class="treemap-item" style="left:'+x+'px;top:'+(H*0.55)+'px;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',65%,42%,0.85)" title="'+esc(it.name)+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+esc(it.name)+'</span><span style="font-size:0.75rem;opacity:0.8">'+it.count+' risks</span></div>';
+    x += w;
+  });
+  container.innerHTML = html;
+}
+
+function renderTimeline() {
+  const events = CONTRACT_DATA.timeline;
+  const dates = events.map(e => new Date(e.date).getTime());
+  const min = Math.min(...dates);
+  const max = Math.max(...dates);
+  const range = max - min;
+  const today = new Date().getTime();
+  const todayPct = Math.max(0, Math.min(100, ((today - min) / range) * 100));
+  let html = '<div class="timeline-bar">';
+  html += '<div class="timeline-today" style="left:'+todayPct+'%"><span class="timeline-today-label">Today</span></div>';
+  events.forEach(e => {
+    const pct = ((new Date(e.date).getTime() - min) / range) * 100;
+    const isPast = new Date(e.date) < new Date();
+    const color = e.type === 'milestone' ? 'var(--accent)' : e.type === 'deadline' ? 'var(--risk-medium)' : 'var(--risk-low)';
+    const opacity = isPast ? '0.5' : '1';
+    html += '<div class="timeline-marker" style="left:'+pct+'%;background:'+color+';opacity:'+opacity+'"></div>';
+    html += '<div class="timeline-label" style="left:'+pct+'%;opacity:'+opacity+'"><strong>'+e.event+'</strong><br>'+e.date+'</div>';
+  });
+  html += '</div>';
+  document.getElementById('timelineContainer').innerHTML = html;
+}
+
+function renderActionsTable() {
+  const html = CONTRACT_DATA.recommendedActions.map(a => {
+    const pClass = a.priority === 'Urgent' ? 'priority-urgent' : a.priority === 'High' ? 'priority-high-p' : a.priority === 'Medium' ? 'priority-medium-p' : 'priority-low-p';
+    const badgeClass = 'badge-' + a.riskLevel.toLowerCase();
+    return '<tr data-risk="'+esc(a.riskLevel)+'"><td><span class="priority-dot '+pClass+'"></span>'+esc(a.priority)+'</td><td>'+esc(a.clause)+'</td><td><span class="badge '+badgeClass+'">'+esc(a.riskLevel)+'</span></td><td>'+esc(a.action)+'</td><td><span class="badge" style="background:rgba(59,130,246,0.12);color:var(--accent)">'+esc(a.category)+'</span></td></tr>';
+  }).join('');
+  document.getElementById('actionsBody').innerHTML = html;
+}
+
+function sortTable(colIdx) {
+  const tbody = document.getElementById('actionsBody');
+  const rows = Array.from(tbody.rows);
+  const isAsc = tbody.dataset.sortCol == colIdx && tbody.dataset.sortDir === 'asc';
+  rows.sort((a, b) => {
+    let va = a.cells[colIdx].textContent.trim();
+    let vb = b.cells[colIdx].textContent.trim();
+    if (colIdx === 0) { va = PRIORITY_ORDER[va] ?? 9; vb = PRIORITY_ORDER[vb] ?? 9; return isAsc ? vb - va : va - vb; }
+    return isAsc ? vb.localeCompare(va) : va.localeCompare(vb);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+  tbody.dataset.sortCol = colIdx;
+  tbody.dataset.sortDir = isAsc ? 'desc' : 'asc';
+}
+
+function filterTable(level) {
+  document.querySelectorAll('#actionsBody tr').forEach(row => {
+    row.style.display = (level === 'all' || row.dataset.risk === level) ? '' : 'none';
+  });
+}
+
+function renderComparison() {
+  const ctx = document.getElementById('comparisonChart').getContext('2d');
+  const types = ['Legal','Compliance','Financial','Reputational','Operational'];
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const datasets = ['Low','Medium','High'].map(level => ({
+    label: level + ' Risk',
+    data: types.map(t => CONTRACT_DATA.riskAssessment.filter(r => r.riskType === t && r.riskLevel === level).length),
+    backgroundColor: COLORS[level] + 'cc',
+    borderRadius: 6
+  }));
+  chartInstances.comparison = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: types, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { grid: { display: false }, ticks: { color: isDark ? '#f1f5f9' : '#1e293b' } },
+        y: { beginAtZero: true, grid: { color: isDark ? 'rgba(148,163,184,0.1)' : 'rgba(100,116,139,0.1)' }, ticks: { color: isDark ? '#94a3b8' : '#64748b', stepSize: 1 } }
+      },
+      plugins: { legend: { labels: { color: isDark ? '#f1f5f9' : '#1e293b', usePointStyle: true, pointStyle: 'circle' } } }
+    }
+  });
+}
+
+function searchAll(query) {
+  const q = query.toLowerCase().trim();
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  if (!q) { document.querySelector('.filter-btn').classList.add('active'); }
+  let visibleCards = 0;
+  document.querySelectorAll('.clause-card').forEach(card => {
+    const text = card.textContent.toLowerCase();
+    const match = !q || text.includes(q);
+    card.classList.toggle('hidden', !match);
+    if (match) visibleCards++;
+  });
+  document.getElementById('noResults').style.display = visibleCards === 0 ? 'block' : 'none';
+  document.querySelectorAll('#actionsBody tr').forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = (!q || text.includes(q)) ? '' : 'none';
+  });
+}
+
+const tooltip = { el: null };
+function showTooltip(e, html) {
+  const tt = tooltip.el;
+  tt.innerHTML = html;
+  tt.classList.add('visible');
+  const x = Math.min(e.clientX + 12, window.innerWidth - 340);
+  const y = Math.min(e.clientY + 12, window.innerHeight - tt.offsetHeight - 10);
+  tt.style.left = x + 'px';
+  tt.style.top = y + 'px';
+}
+function hideTooltip() { tooltip.el.classList.remove('visible'); }
+
+function bindTooltips() {
+  tooltip.el = document.getElementById('tooltip');
+  document.querySelectorAll('.stat-card').forEach((card, i) => {
+    const details = [
+      'Total unique clause types analyzed from the contract',
+      'Average risk score across all '+CONTRACT_DATA.riskAssessment.length+' identified risks',
+      CONTRACT_DATA.riskAssessment.filter(r=>r.riskLevel==='High').length+' of '+CONTRACT_DATA.riskAssessment.length+' risks rated as High severity',
+      'Recommended actions to mitigate identified contract risks',
+      'Total value of the contract over its full term',
+      CONTRACT_DATA.metadata.expirationDate ? 'Contract expires on '+CONTRACT_DATA.metadata.expirationDate : 'No expiration date specified'
+    ];
+    card.addEventListener('mousemove', e => showTooltip(e, '<div class="tt-detail">'+esc(details[i]||'')+'</div>'));
+    card.addEventListener('mouseleave', hideTooltip);
+  });
+  document.querySelectorAll('.heatmap-cell').forEach(cell => {
+    cell.addEventListener('mousemove', function(e) {
+      const title = this.getAttribute('title');
+      if (title) showTooltip(e, '<div class="tt-title">Risk Matrix Cell</div><div class="tt-detail">'+esc(title)+'</div>');
+    });
+    cell.addEventListener('mouseleave', hideTooltip);
+  });
+  document.querySelectorAll('.treemap-item').forEach(item => {
+    item.addEventListener('mousemove', function(e) {
+      const title = this.getAttribute('title');
+      if (title) showTooltip(e, '<div class="tt-title">Clause Group</div><div class="tt-detail">'+esc(title)+'</div>');
+    });
+    item.addEventListener('mouseleave', hideTooltip);
+  });
+  document.querySelectorAll('.timeline-marker').forEach((marker, i) => {
+    const ev = CONTRACT_DATA.timeline[i];
+    if (!ev) return;
+    marker.addEventListener('mousemove', function(e) {
+      showTooltip(e, '<div class="tt-title">'+esc(ev.event)+'</div><div class="tt-detail">Date: '+esc(ev.date)+'<br>Type: '+esc(ev.type)+'</div>');
+    });
+    marker.addEventListener('mouseleave', hideTooltip);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  renderStats();
+  renderGauge();
+  renderHeatmap();
+  renderRadar();
+  renderPipeline();
+  renderDonut();
+  renderBarChart();
+  renderClauseCards();
+  renderTreemap();
+  renderTimeline();
+  renderActionsTable();
+  renderComparison();
+  bindTooltips();
+});
+</script>
+</body>
+</html>
