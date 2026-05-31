@@ -1,0 +1,25 @@
+# Core LLM / RAG stack
+langchain
+langchain-core
+langchain-huggingface
+langchain-milvus
+langchain-docling
+langgraph
+docling
+
+# Embeddings & models
+transformers
+sentence-transformers
+torch
+
+# Fine-tuning (GPU recommended)
+unsloth
+trl
+peft
+datasets
+bitsandbytes
+
+# App / UI & utilities
+streamlit
+pyngrok
+pandas
