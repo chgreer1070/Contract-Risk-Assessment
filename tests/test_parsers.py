@@ -384,6 +384,95 @@ def test_generate_html_populates_metadata_and_timeline():
     assert len(data['timeline']) >= 2  # effective + expiration at minimum
 
 
+# --------------------------------------------------------------------------- #
+# structured (JSON) path — preferred over markdown parsing
+# --------------------------------------------------------------------------- #
+
+def test_structured_clauses_preferred_over_markdown():
+    state = {
+        'key_clauses': '- **Clause Type**: SHOULD_NOT_APPEAR\n- **Extracted Clause**: x.\n- **Summary**: y.\n',
+        'key_clauses_data': [
+            {'clauseType': 'Liability', 'section': 'Section 8.1',
+             'extractedClause': 'Capped at fees.', 'summary': 'Cap.', 'riskImpact': 'High'},
+            {'clauseType': 'Termination', 'extractedClause': '30 days.', 'summary': 'Notice.'},
+        ],
+        'risk_assessment_report': '', 'recommended_actions': '',
+    }
+    html = generate_dashboard_html(state)
+    data = _extract_contract_data(html)
+    assert [c['clauseType'] for c in data['keyClauses']] == ['Liability', 'Termination']
+    assert 'SHOULD_NOT_APPEAR' not in html          # markdown path NOT used
+    assert data['keyClauses'][0]['id'] == 'KC-001'
+
+
+def test_structured_risks_normalized_and_scored():
+    state = {
+        'key_clauses': '', 'recommended_actions': '',
+        'risk_assessment_data': [
+            {'riskType': 'Privacy', 'riskLevel': 'very high', 'likelihood': 'almost certain',
+             'potentialConsequence': 'Fines.', 'clauseReference': 'Section 6.1'},
+        ],
+    }
+    data = _extract_contract_data(generate_dashboard_html(state))
+    r = data['riskAssessment'][0]
+    assert r['riskType'] == 'Privacy'
+    assert r['riskLevel'] == 'High' and r['likelihood'] == 'Likely'   # normalized
+    assert r['score'] >= 8
+
+
+def test_structured_actions_key_casing_tolerant():
+    state = {
+        'key_clauses': '', 'risk_assessment_report': '',
+        'recommended_actions_data': [
+            {'Clause': 'Section 8.1', 'Risk_Level': 'High', 'Recommended Action': 'Negotiate the cap.'},
+        ],
+    }
+    data = _extract_contract_data(generate_dashboard_html(state))
+    a = data['recommendedActions'][0]
+    assert a['clause'] == 'Section 8.1'
+    assert a['priority'] == 'Urgent'        # derived from High
+    assert a['category'] == 'Negotiation'   # derived from text
+
+
+def test_legacy_risk_assessment_list_field_consumed():
+    """The previously-unused State['risk_assessment'] is honored if it's a list."""
+    state = {
+        'key_clauses': '', 'recommended_actions': '',
+        'risk_assessment': [
+            {'riskType': 'Legal', 'riskLevel': 'High', 'likelihood': 'Possible',
+             'potentialConsequence': 'X', 'clauseReference': 'S1'},
+        ],
+    }
+    data = _extract_contract_data(generate_dashboard_html(state))
+    assert len(data['riskAssessment']) == 1
+    assert data['riskAssessment'][0]['riskType'] == 'Legal'
+
+
+def test_structured_path_still_escapes_script_breakout():
+    """Security: the </script> escape must apply on the JSON path too."""
+    state = {
+        'key_clauses': '', 'risk_assessment_report': '', 'recommended_actions': '',
+        'key_clauses_data': [
+            {'clauseType': 'Liability', 'extractedClause': '</script><script>alert(1)</script>',
+             'summary': 's'},
+        ],
+    }
+    html = generate_dashboard_html(state)
+    assert '</script><script>alert(1)' not in html
+    data = _extract_contract_data(html)
+    assert data['keyClauses'][0]['extractedClause'] == '</script><script>alert(1)</script>'
+
+
+def test_empty_structured_list_falls_back_to_markdown():
+    state = {
+        'key_clauses_data': [],   # empty -> ignored, markdown used
+        'key_clauses': '- **Clause Type**: Liability\n- **Extracted Clause**: x.\n- **Summary**: y.\n',
+        'risk_assessment_report': '', 'recommended_actions': '',
+    }
+    data = _extract_contract_data(generate_dashboard_html(state))
+    assert data['keyClauses'][0]['clauseType'] == 'Liability'
+
+
 def test_end_to_end_realistic_state():
     state = {
         'key_clauses': (
