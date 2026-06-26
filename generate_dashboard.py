@@ -20,6 +20,7 @@ Usage:
 
 import json
 import re
+from datetime import timedelta, datetime
 
 # --- Tolerant parsing helpers -------------------------------------------------
 # Real Mixtral/Mistral output deviates from the prompt's bullet+**bold** template:
@@ -240,6 +241,82 @@ def compute_risk_score(risks):
     return round(sum(r['score'] for r in risks) / len(risks), 1)
 
 
+# --- Contract metadata + timeline --------------------------------------------
+# The pipeline's metadata-extraction node writes a dict into state['metadata'].
+# It is LLM output, so key casing / shape varies; normalize defensively.
+
+_DATE_FORMATS = ('%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%B %d, %Y', '%b %d, %Y',
+                 '%d %B %Y', '%d %b %Y', '%Y/%m/%d')
+
+
+def _parse_date(value):
+    """Parse a date string in a few common formats; return a datetime or None."""
+    if not value or not isinstance(value, str):
+        return None
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(value.strip(), fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _build_metadata(state):
+    """Normalize state['metadata'] (LLM output) into the CONTRACT_DATA shape."""
+    raw = state.get('metadata') or {}
+    # Index the raw dict by a normalized key (lowercase, no spaces/underscores).
+    norm = {k.lower().replace('_', '').replace(' ', ''): v
+            for k, v in raw.items()} if isinstance(raw, dict) else {}
+
+    def pick(*keys, default=''):
+        for k in keys:
+            v = norm.get(k)
+            if v:
+                return v
+        return default
+
+    parties = pick('parties', default=[])
+    if isinstance(parties, str):
+        parties = [p.strip() for p in re.split(r'\s+(?:and|&)\s+|,', parties) if p.strip()]
+    if not isinstance(parties, list):
+        parties = []
+
+    # Legacy fallback: dates may arrive as flat state keys from older callers.
+    eff = pick('effectivedate', 'startdate', 'commencementdate',
+               default=state.get('effective_date', ''))
+    exp = pick('expirationdate', 'enddate', 'expirydate', 'terminationdate',
+               default=state.get('expiration_date', ''))
+
+    return {
+        'title': pick('title', 'agreement', default='Contract Analysis Results') or 'Contract Analysis Results',
+        'parties': parties,
+        'effectiveDate': eff or '',
+        'expirationDate': exp or '',
+        'contractValue': pick('contractvalue', 'value', 'totalvalue', default='N/A') or 'N/A',
+        'jurisdiction': pick('jurisdiction', 'governinglaw', 'law', default='N/A') or 'N/A',
+    }
+
+
+def _build_timeline(metadata):
+    """Derive timeline events from extracted dates. Empty if no dates parse."""
+    eff = _parse_date(metadata.get('effectiveDate', ''))
+    exp = _parse_date(metadata.get('expirationDate', ''))
+    events = []
+    if eff:
+        events.append((eff, 'Contract Effective', 'milestone'))
+    if eff and exp and exp > eff:
+        mid = eff + (exp - eff) / 2
+        events.append((mid, 'Mid-term Review', 'review'))
+        notice = exp - timedelta(days=30)
+        if notice > eff:
+            events.append((notice, 'Termination Notice (30d)', 'deadline'))
+    if exp:
+        events.append((exp, 'Contract Expiration', 'milestone'))
+    events.sort(key=lambda e: e[0])
+    return [{'date': d.strftime('%Y-%m-%d'), 'event': name, 'type': kind}
+            for d, name, kind in events]
+
+
 def generate_dashboard_html(state):
     """
     Main entry point: takes pipeline State dict, returns complete HTML string.
@@ -255,6 +332,8 @@ def generate_dashboard_html(state):
     risks = parse_risk_assessment(state.get('risk_assessment_report', ''))
     actions = parse_recommended_actions(state.get('recommended_actions', ''))
     overall_score = compute_risk_score(risks)
+    metadata = _build_metadata(state)
+    timeline = _build_timeline(metadata)
 
     # Read the HTML template
     import os
@@ -265,14 +344,7 @@ def generate_dashboard_html(state):
 
     # Build the data object matching CONTRACT_DATA structure
     data = {
-        'metadata': {
-            'title': 'Contract Analysis Results',
-            'parties': ['Party A', 'Party B'],
-            'effectiveDate': state.get('effective_date', ''),
-            'expirationDate': state.get('expiration_date', ''),
-            'contractValue': 'N/A',
-            'jurisdiction': 'N/A'
-        },
+        'metadata': metadata,
         'keyClauses': clauses,
         'riskAssessment': risks,
         'recommendedActions': actions,
@@ -283,7 +355,7 @@ def generate_dashboard_html(state):
             {'name': 'Risk Assessment', 'icon': '⚠️', 'status': 'complete', 'duration': 'done'},
             {'name': 'Actions', 'icon': '✅', 'status': 'complete', 'duration': 'done'}
         ],
-        'timeline': [],
+        'timeline': timeline,
         'overallRiskScore': overall_score
     }
 

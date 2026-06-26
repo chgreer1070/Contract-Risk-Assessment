@@ -26,6 +26,9 @@ from generate_dashboard import (  # noqa: E402
     generate_dashboard_html,
     _canon_level,
     _canon_likelihood,
+    _build_metadata,
+    _build_timeline,
+    _parse_date,
 )
 
 
@@ -291,6 +294,94 @@ def test_generated_html_has_single_contract_data_block():
     state = {'key_clauses': '', 'risk_assessment_report': '', 'recommended_actions': ''}
     html = generate_dashboard_html(state)
     assert html.count('const CONTRACT_DATA = {') == 1
+
+
+# --------------------------------------------------------------------------- #
+# metadata & timeline
+# --------------------------------------------------------------------------- #
+
+def test_build_metadata_from_pipeline_dict():
+    state = {'metadata': {
+        'title': 'SaaS Agreement',
+        'parties': ['Acme Corp', 'CloudServe Inc.'],
+        'effectiveDate': '2025-01-15',
+        'expirationDate': '2027-01-14',
+        'contractValue': '$480,000',
+        'jurisdiction': 'Delaware',
+    }}
+    m = _build_metadata(state)
+    assert m['title'] == 'SaaS Agreement'
+    assert m['parties'] == ['Acme Corp', 'CloudServe Inc.']
+    assert m['contractValue'] == '$480,000'
+    assert m['jurisdiction'] == 'Delaware'
+
+
+def test_build_metadata_tolerates_key_casing_and_synonyms():
+    state = {'metadata': {
+        'Title': 'X', 'Effective_Date': '2025-01-01', 'end date': '2026-01-01',
+        'governing_law': 'New York', 'value': '$1M',
+    }}
+    m = _build_metadata(state)
+    assert m['effectiveDate'] == '2025-01-01'
+    assert m['expirationDate'] == '2026-01-01'
+    assert m['jurisdiction'] == 'New York'
+    assert m['contractValue'] == '$1M'
+
+
+def test_build_metadata_parties_string_split():
+    m = _build_metadata({'metadata': {'parties': 'Acme Corp and CloudServe Inc.'}})
+    assert m['parties'] == ['Acme Corp', 'CloudServe Inc.']
+
+
+def test_build_metadata_defaults_when_absent():
+    m = _build_metadata({})
+    assert m['title'] == 'Contract Analysis Results'
+    assert m['parties'] == []
+    assert m['contractValue'] == 'N/A'
+    assert m['expirationDate'] == ''
+
+
+@pytest.mark.parametrize('s,ok', [
+    ('2025-01-15', True), ('01/15/2025', True), ('January 15, 2025', True),
+    ('', False), ('not a date', False), (None, False),
+])
+def test_parse_date(s, ok):
+    assert (_parse_date(s) is not None) == ok
+
+
+def test_build_timeline_full():
+    m = {'effectiveDate': '2025-01-01', 'expirationDate': '2026-01-01'}
+    tl = _build_timeline(m)
+    names = [e['event'] for e in tl]
+    assert 'Contract Effective' in names
+    assert 'Contract Expiration' in names
+    assert 'Mid-term Review' in names
+    # sorted ascending by date
+    dates = [e['date'] for e in tl]
+    assert dates == sorted(dates)
+
+
+def test_build_timeline_empty_without_dates():
+    assert _build_timeline({'effectiveDate': '', 'expirationDate': ''}) == []
+
+
+def test_generate_html_populates_metadata_and_timeline():
+    state = {
+        'key_clauses': '- **Clause Type**: Liability\n- **Extracted Clause**: x.\n- **Summary**: y.\n',
+        'risk_assessment_report': '',
+        'recommended_actions': '',
+        'metadata': {
+            'title': 'Vendor MSA', 'parties': ['A Inc', 'B LLC'],
+            'effectiveDate': '2025-03-01', 'expirationDate': '2026-03-01',
+            'contractValue': '$250,000', 'jurisdiction': 'California',
+        },
+    }
+    html = generate_dashboard_html(state)
+    data = _extract_contract_data(html)
+    assert data['metadata']['title'] == 'Vendor MSA'
+    assert data['metadata']['parties'] == ['A Inc', 'B LLC']
+    assert data['metadata']['contractValue'] == '$250,000'
+    assert len(data['timeline']) >= 2  # effective + expiration at minimum
 
 
 def test_end_to_end_realistic_state():
