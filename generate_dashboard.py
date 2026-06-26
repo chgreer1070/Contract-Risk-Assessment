@@ -21,31 +21,109 @@ Usage:
 import json
 import re
 
+# --- Tolerant parsing helpers -------------------------------------------------
+# Real Mixtral/Mistral output deviates from the prompt's bullet+**bold** template:
+# it emits numbered lists, drops bold markers, and adds prose qualifiers. These
+# helpers extract fields tolerantly so a single format slip doesn't collapse the
+# whole parse into one fallback blob.
+
+def _split_blocks(text, anchor_label):
+    """Split text before each occurrence of an anchor field label.
+
+    Tolerates an optional leading bullet ('-'/'*'), numbered prefix ('1.'/'2)'),
+    and optional '**bold**' around the label, followed by ':' or '-'.
+    """
+    lab = anchor_label.replace(' ', r'\s+')
+    return re.split(
+        r'\n(?=\s*(?:[-*]|\d+[.)])?\s*(?:\*\*)?\s*' + lab + r'\s*(?:\*\*)?\s*[:\-])',
+        text,
+    )
+
+
+# Field labels that mark the start of the NEXT field (used as stop-points when
+# capturing a multi-line value). Kept broad on purpose.
+_STOP_LABELS = [
+    'Clause Type', 'Extracted Clause', 'Summary', 'Risk Type', 'Clause Reference',
+    'Risk Level', 'Likelihood', 'Potential Consequence', 'Clause',
+    'Recommended Action', 'Priority', 'Category',
+]
+
+
+def _field(label, block, multiline=False):
+    """Extract a labeled field value from a block.
+
+    Tolerant of optional bullet/number prefix, optional '**bold**' around the
+    label, and ':' or '-' as the separator. When ``multiline`` is True, captures
+    until the next recognized field label (or end of block).
+    """
+    lab = label.replace(' ', r'\s+')
+    head = r'(?:[-*]|\d+[.)])?\s*(?:\*\*)?\s*' + lab + r'\s*(?:\*\*)?\s*[:\-]\s*\[?'
+    if multiline:
+        stops = '|'.join(
+            r'(?:[-*]|\d+[.)])?\s*(?:\*\*)?\s*' + s.replace(' ', r'\s+') + r'\s*(?:\*\*)?\s*[:\-]'
+            for s in _STOP_LABELS
+        )
+        m = re.search(head + r'(.*?)(?=\n\s*(?:' + stops + r')|\Z)', block, re.S)
+    else:
+        m = re.search(head + r'(.*?)\]?\s*$', block, re.M)
+    if not m:
+        return None
+    return m.group(1).strip().strip('[]').rstrip('-* \n').strip()
+
+
+def _canon_level(value, default='Medium'):
+    """Normalize a risk level / impact to one of High / Medium / Low."""
+    if not value:
+        return default
+    s = value.lower()
+    if any(w in s for w in ('critical', 'severe', 'very high', 'extreme')):
+        return 'High'
+    if 'high' in s:
+        return 'High'
+    if any(w in s for w in ('low', 'minor', 'negligible', 'minimal')):
+        return 'Low'
+    if any(w in s for w in ('medium', 'moderate')):
+        return 'Medium'
+    return default
+
+
+def _canon_likelihood(value, default='Possible'):
+    """Normalize a likelihood to one of Unlikely / Possible / Likely."""
+    if not value:
+        return default
+    s = value.lower()
+    # 'unlikely' contains 'likely' — check the negatives first.
+    if any(w in s for w in ('unlikely', 'rare', 'improbable', 'seldom')):
+        return 'Unlikely'
+    if any(w in s for w in ('likely', 'probable', 'certain', 'frequent', 'expected')):
+        return 'Likely'
+    if any(w in s for w in ('possible', 'occasional')):
+        return 'Possible'
+    return default
+
 
 def parse_key_clauses(raw_markdown):
     """Parse LLM markdown output for key clauses into structured dicts."""
     clauses = []
-    blocks = re.split(r'\n(?=[-*]\s*\*\*Clause Type\*\*)', raw_markdown)
-    for i, block in enumerate(blocks):
+    blocks = _split_blocks(raw_markdown, 'Clause Type')
+    for block in blocks:
         clause = {
-            'id': f'KC-{i+1:03d}',
+            'id': '',  # assigned sequentially over surviving clauses below
             'clauseType': 'General',
             'section': '',
             'extractedClause': '',
             'summary': '',
             'riskImpact': 'Medium'
         }
-        type_match = re.search(r'\*\*Clause Type\*\*\s*:\s*\[?(.*?)\]?\s*$', block, re.M)
-        if type_match:
-            clause['clauseType'] = type_match.group(1).strip().strip('[]')
+        clause['clauseType'] = _field('Clause Type', block) or 'General'
+        clause['extractedClause'] = _field('Extracted Clause', block, multiline=True) or ''
+        clause['summary'] = _field('Summary', block, multiline=True) or ''
 
-        extract_match = re.search(r'\*\*Extracted Clause\*\*\s*:\s*\[?(.*?)(?=\*\*Summary\*\*|\*\*Clause Type\*\*|\Z)', block, re.S)
-        if extract_match:
-            clause['extractedClause'] = extract_match.group(1).strip().strip('[]').rstrip('-* \n')
-
-        summary_match = re.search(r'\*\*Summary\*\*\s*:\s*\[?(.*?)(?=\*\*Clause Type\*\*|\*\*Extracted Clause\*\*|\Z)', block, re.S)
-        if summary_match:
-            clause['summary'] = summary_match.group(1).strip().strip('[]').rstrip('-* \n')
+        # Pull a section/article identifier from the clause text if present.
+        # Require a leading digit so the field label "Clause Type" isn't matched.
+        sec = re.search(r'\b(?:Section|Article|Clause)\s+\d[\dA-Za-z.]*', block)
+        if sec:
+            clause['section'] = sec.group(0).rstrip('.')
 
         # Infer risk impact from keywords
         text = (clause['extractedClause'] + ' ' + clause['summary']).lower()
@@ -55,6 +133,7 @@ def parse_key_clauses(raw_markdown):
             clause['riskImpact'] = 'Low'
 
         if clause['extractedClause'] or clause['summary']:
+            clause['id'] = f'KC-{len(clauses) + 1:03d}'
             clauses.append(clause)
 
     if not clauses and raw_markdown.strip():
@@ -72,7 +151,7 @@ def parse_key_clauses(raw_markdown):
 def parse_risk_assessment(raw_text):
     """Parse LLM risk assessment report into structured dicts."""
     risks = []
-    blocks = re.split(r'\n(?=[-*]\s*\*\*Risk Type\*\*)', raw_text)
+    blocks = _split_blocks(raw_text, 'Risk Type')
     for block in blocks:
         risk = {
             'riskType': 'General',
@@ -82,27 +161,14 @@ def parse_risk_assessment(raw_text):
             'potentialConsequence': '',
             'score': 5
         }
-        type_match = re.search(r'\*\*Risk Type\*\*\s*:\s*\[?(.*?)\]?\s*$', block, re.M)
-        if type_match:
-            risk['riskType'] = type_match.group(1).strip().strip('[]')
+        risk['riskType'] = _field('Risk Type', block) or 'General'
+        risk['clauseReference'] = _field('Clause Reference', block) or ''
+        # Normalize so the numeric score AND the HTML's level/likelihood filters agree.
+        risk['riskLevel'] = _canon_level(_field('Risk Level', block))
+        risk['likelihood'] = _canon_likelihood(_field('Likelihood', block))
+        risk['potentialConsequence'] = _field('Potential Consequence', block, multiline=True) or ''
 
-        clause_match = re.search(r'\*\*Clause Reference\*\*\s*:\s*\[?(.*?)\]?\s*$', block, re.M)
-        if clause_match:
-            risk['clauseReference'] = clause_match.group(1).strip().strip('[]')
-
-        level_match = re.search(r'\*\*Risk Level\*\*\s*:\s*\[?(.*?)\]?\s*$', block, re.M)
-        if level_match:
-            risk['riskLevel'] = level_match.group(1).strip().strip('[]')
-
-        like_match = re.search(r'\*\*Likelihood\*\*\s*:\s*\[?(.*?)\]?\s*$', block, re.M)
-        if like_match:
-            risk['likelihood'] = like_match.group(1).strip().strip('[]')
-
-        conseq_match = re.search(r'\*\*Potential Consequence\*\*\s*:\s*\[?(.*?)(?=\*\*Risk Type\*\*|\*\*Clause Reference\*\*|\Z)', block, re.S)
-        if conseq_match:
-            risk['potentialConsequence'] = conseq_match.group(1).strip().strip('[]').rstrip('-* \n')
-
-        # Compute numeric score
+        # Compute numeric score from the canonical values
         level_scores = {'High': 8, 'Medium': 5, 'Low': 3}
         like_mult = {'Likely': 1.1, 'Possible': 1.0, 'Unlikely': 0.8}
         base = level_scores.get(risk['riskLevel'], 5)
@@ -127,7 +193,7 @@ def parse_risk_assessment(raw_text):
 def parse_recommended_actions(raw_text):
     """Parse LLM recommended actions into structured dicts."""
     actions = []
-    blocks = re.split(r'\n(?=[-*]\s*\*\*Clause\*\*|\*\*Clause\*\*)', raw_text)
+    blocks = _split_blocks(raw_text, 'Clause')
     for block in blocks:
         action = {
             'clause': '',
@@ -136,17 +202,9 @@ def parse_recommended_actions(raw_text):
             'priority': 'Medium',
             'category': 'Legal Review'
         }
-        clause_match = re.search(r'\*\*Clause\*\*\s*:\s*\[?(.*?)\]?\s*$', block, re.M)
-        if clause_match:
-            action['clause'] = clause_match.group(1).strip().strip('[]')
-
-        level_match = re.search(r'\*\*Risk Level\*\*\s*:\s*\[?(.*?)\]?\s*$', block, re.M)
-        if level_match:
-            action['riskLevel'] = level_match.group(1).strip().strip('[]')
-
-        act_match = re.search(r'\*\*Recommended Action\*\*\s*:\s*\[?(.*?)(?=\*\*Clause\*\*|\*\*Risk Level\*\*|\Z)', block, re.S)
-        if act_match:
-            action['action'] = act_match.group(1).strip().strip('[]').rstrip('-* \n')
+        action['clause'] = _field('Clause', block) or ''
+        action['riskLevel'] = _canon_level(_field('Risk Level', block))
+        action['action'] = _field('Recommended Action', block, multiline=True) or ''
 
         # Infer priority from risk level
         priority_map = {'High': 'Urgent', 'Medium': 'High', 'Low': 'Medium'}
@@ -231,10 +289,32 @@ def generate_dashboard_html(state):
 
     data_json = json.dumps(data, indent=2, ensure_ascii=False)
 
-    # Replace the embedded CONTRACT_DATA in the template
+    # Escape for safe embedding inside an HTML <script> block. Contract text is
+    # attacker-influenceable (it comes from a parsed PDF), so this is required:
+    #  - '</' would let a literal '</script>' in contract text close the <script>
+    #    tag during HTML parsing, before any JS runs, breaking out / injecting.
+    #  - U+2028 / U+2029 are valid in JSON but are JS line terminators that would
+    #    break the string literal.
+    data_json = (data_json
+                 .replace('</', '<\\/')
+                 .replace('\u2028', '\\u2028')
+                 .replace('\u2029', '\\u2029'))
+
+    # Replace the embedded CONTRACT_DATA in the template. Use a function as the
+    # replacement so backslashes / group references in contract text are inserted
+    # literally (a plain string replacement would interpret '\\1', '\\g', etc.).
     pattern = r'const CONTRACT_DATA = \{.*?\n\};'
-    replacement = f'const CONTRACT_DATA = {data_json};'
-    result = re.sub(pattern, replacement, template, flags=re.DOTALL)
+    result, n = re.subn(
+        pattern,
+        lambda _m: f'const CONTRACT_DATA = {data_json};',
+        template,
+        flags=re.DOTALL,
+    )
+    if n != 1:
+        raise ValueError(
+            f"Expected exactly one CONTRACT_DATA block in the template, found {n}. "
+            "The template may have changed; the dashboard cannot be generated safely."
+        )
 
     return result
 
