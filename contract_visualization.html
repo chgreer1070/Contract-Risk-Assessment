@@ -887,6 +887,15 @@ function esc(str) {
 
 function getRiskColor(level) { return COLORS[level] || '#94a3b8'; }
 
+// Risk-type axis labels: derive from the data actually present so charts don't
+// go blank when the LLM emits categories other than the original five. Falls
+// back to the canonical set when no risk data is available.
+function riskTypes() {
+  const present = [...new Set((CONTRACT_DATA.riskAssessment || [])
+    .map(r => r.riskType).filter(Boolean))];
+  return present.length ? present : ['Legal','Compliance','Financial','Reputational','Operational'];
+}
+
 function countByLevel(arr, field) {
   const c = {High:0,Medium:0,Low:0};
   arr.forEach(r => { if(c[r[field]] !== undefined) c[r[field]]++; });
@@ -921,20 +930,23 @@ function toggleTheme() {
 
 function renderStats() {
   const d = CONTRACT_DATA;
-  const subtitle = d.metadata.title + (d.metadata.parties.length ? ' — ' + d.metadata.parties.join(' & ') : '');
+  const parties = d.metadata.parties || [];
+  const subtitle = d.metadata.title + (parties.length ? ' — ' + parties.join(' & ') : '');
   document.getElementById('headerSubtitle').textContent = subtitle;
   const highCount = d.riskAssessment.filter(r => r.riskLevel === 'High').length;
   const days = daysUntil(d.metadata.expirationDate);
+  const naVal = v => (!v || v === 'N/A') ? '—' : v;
   const stats = [
     {label:'Total Clauses',value:d.keyClauses.length,color:'var(--accent)',icon:'📋'},
     {label:'Risk Score',value:d.overallRiskScore+'/10',color:'var(--risk-high)',icon:'⚡'},
     {label:'High Risks',value:highCount,color:'var(--risk-high)',icon:'🔴'},
     {label:'Action Items',value:d.recommendedActions.length,color:'var(--risk-medium)',icon:'📝'},
-    {label:'Contract Value',value:d.metadata.contractValue,color:'var(--risk-low)',icon:'💰'},
-    {label:'Days Remaining',value:days,color:days<180?'var(--risk-medium)':'var(--risk-low)',icon:'📅'}
+    {label:'Contract Value',value:naVal(d.metadata.contractValue),color:'var(--risk-low)',icon:'💰'},
+    {label:'Days Remaining',value:(days === 'N/A' ? '—' : days),color:(typeof days === 'number' && days < 180)?'var(--risk-medium)':'var(--risk-low)',icon:'📅'}
   ];
+  // s.value may be metadata-derived (contract value / title) — escape it.
   document.getElementById('statsBar').innerHTML = stats.map(s =>
-    '<div class="stat-card" style="border-left-color:'+s.color+'"><div style="display:flex;justify-content:space-between;align-items:center"><span class="stat-number">'+s.value+'</span><span style="font-size:1.5rem">'+s.icon+'</span></div><div class="stat-label">'+s.label+'</div></div>'
+    '<div class="stat-card" style="border-left-color:'+s.color+'"><div style="display:flex;justify-content:space-between;align-items:center"><span class="stat-number">'+esc(String(s.value))+'</span><span style="font-size:1.5rem">'+s.icon+'</span></div><div class="stat-label">'+s.label+'</div></div>'
   ).join('');
 }
 
@@ -1021,7 +1033,7 @@ function renderHeatmap() {
 
 function renderRadar() {
   const ctx = document.getElementById('radarChart').getContext('2d');
-  const types = ['Legal','Compliance','Financial','Reputational','Operational'];
+  const types = riskTypes();
   const scores = types.map(t => {
     const items = CONTRACT_DATA.riskAssessment.filter(r => r.riskType === t);
     return items.length ? Math.max(...items.map(r => r.score)) : 0;
@@ -1108,7 +1120,7 @@ function renderDonut() {
 
 function renderBarChart() {
   const ctx = document.getElementById('barChart').getContext('2d');
-  const types = ['Legal','Compliance','Financial','Reputational','Operational'];
+  const types = riskTypes();
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const datasets = ['Low','Medium','High'].map(level => ({
     label: level,
@@ -1211,11 +1223,20 @@ function renderTreemap() {
 }
 
 function renderTimeline() {
-  const events = CONTRACT_DATA.timeline;
+  const events = (CONTRACT_DATA.timeline || []).filter(e => !isNaN(new Date(e.date).getTime()));
+  const container = document.getElementById('timelineContainer');
+  // Need at least two distinct dates to lay out a proportional timeline.
   const dates = events.map(e => new Date(e.date).getTime());
   const min = Math.min(...dates);
   const max = Math.max(...dates);
   const range = max - min;
+  if (events.length < 2 || range === 0) {
+    container.innerHTML = '<div style="padding:1.5rem 0;color:var(--text-secondary);font-style:italic">'
+      + (events.length ? 'Only one dated milestone available — timeline needs an effective and expiration date.'
+                       : 'No contract dates were extracted, so there is no timeline to show.')
+      + '</div>';
+    return;
+  }
   const today = new Date().getTime();
   const todayPct = Math.max(0, Math.min(100, ((today - min) / range) * 100));
   let html = '<div class="timeline-bar">';
@@ -1264,7 +1285,7 @@ function filterTable(level) {
 
 function renderComparison() {
   const ctx = document.getElementById('comparisonChart').getContext('2d');
-  const types = ['Legal','Compliance','Financial','Reputational','Operational'];
+  const types = riskTypes();
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const datasets = ['Low','Medium','High'].map(level => ({
     label: level + ' Risk',

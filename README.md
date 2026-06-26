@@ -11,6 +11,7 @@ This project automates contract analysis, risk assessment, and legal Q&A using s
 - **Risk Assessment**: Classifies risks (legal, financial, compliance) and rates severity.
 - **Recommended Actions**: Provides mitigation strategies for identified risks.
 - **Conversational Legal Assistant**: Fine-tuned chatbot for interactive contract-related Q&A.
+- **Visual Risk Dashboard**: 12 interactive charts (risk gauge, severity×likelihood heatmap, category radar, clause treemap, contract timeline, sortable actions table, and more) rendered from the analysis output.
 - **Efficient Retrieval**: Uses hybrid chunking and Milvus vector database for precise legal text retrieval.
   
 
@@ -28,7 +29,21 @@ This project automates contract analysis, risk assessment, and legal Q&A using s
 1. **Upload a contract (PDF)**
 2. **AI extracts key clauses** and presents them in a structured format.
 3. **Risk assessment** is performed to classify risks and suggest mitigation.
-4. **Fine-tuned chatbot** provides real-time answers for legal Q&A.
+4. **Visual dashboard** renders the clauses, risks, and recommended actions as interactive charts.
+5. **Fine-tuned chatbot** provides real-time answers for legal Q&A.
+
+## 📊 Visual Dashboard
+The Streamlit app exposes the analysis as an interactive dashboard in addition to the
+text output.
+
+- **In-app:** after analyzing a contract, open the **📊 Visual Dashboard** tab.
+- **Standalone preview:** open `contract_visualization.html` directly in any browser to
+  see the dashboard populated with bundled sample data (needs internet for the Chart.js CDN).
+
+`generate_dashboard.py` is the bridge: `generate_dashboard_html(state)` parses the
+pipeline's `key_clauses` / `risk_assessment_report` / `recommended_actions` output and
+injects it into the HTML template. Contract text is HTML-escaped before embedding, so a
+`</script>` in a contract cannot break out of the dashboard.
 
 ## ✨ Future Enhancements
 
@@ -59,5 +74,24 @@ streamlit run app.py
 > `Finetuned_Model_for_Legal_Chatbot.ipynb` fine-tunes a Mistral-7B adapter with
 > Unsloth and 4-bit quantization, and `Contract_Risk_Assessment.ipynb` runs the
 > RAG + risk-assessment workflow and serves the Streamlit UI (via pyngrok on Colab).
+
+## 🧪 Development & Testing
+The dashboard bridge is pure Python and runs on CPU without a GPU, model, or network:
+
+```bash
+pip install pytest
+pytest                 # unit tests for the generate_dashboard.py parsers
+```
+
+To render and screenshot the dashboard in a headless browser, use the bundled run
+skill (`.claude/skills/run-contract-risk-assessment/`):
+
+```bash
+npm install playwright chart.js
+npx playwright install chromium
+node .claude/skills/run-contract-risk-assessment/smoke.mjs   # screenshots -> /tmp/shots/
+```
+
+Both checks run automatically in CI (`.github/workflows/ci.yml`).
 
 
