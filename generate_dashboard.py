@@ -103,6 +103,49 @@ def _canon_likelihood(value, default='Possible'):
     return default
 
 
+# --- Shared derivations (used by both the markdown parsers and the JSON path) -
+
+def _score_for(level, likelihood):
+    """Numeric 0-10 risk score from canonical level + likelihood."""
+    level_scores = {'High': 8, 'Medium': 5, 'Low': 3}
+    like_mult = {'Likely': 1.1, 'Possible': 1.0, 'Unlikely': 0.8}
+    return min(10, round(level_scores.get(level, 5) * like_mult.get(likelihood, 1.0)))
+
+
+def _priority_for(level):
+    return {'High': 'Urgent', 'Medium': 'High', 'Low': 'Medium'}.get(level, 'Medium')
+
+
+def _category_for(action_text):
+    t = (action_text or '').lower()
+    if any(w in t for w in ('negotiate', 'increase', 'reduce', 'remove cap')):
+        return 'Negotiation'
+    if any(w in t for w in ('compliance', 'audit', 'gdpr', 'insurance')):
+        return 'Compliance'
+    if any(w in t for w in ('monitor', 'track', 'review period')):
+        return 'Monitoring'
+    return 'Legal Review'
+
+
+def _impact_for(text):
+    t = (text or '').lower()
+    if any(w in t for w in ('liability', 'indemnif', 'data breach', 'gdpr', 'penalty')):
+        return 'High'
+    if any(w in t for w in ('confidential', 'force majeure', 'minor')):
+        return 'Low'
+    return 'Medium'
+
+
+def _pick_ci(d, *keys, default=''):
+    """Case-/separator-insensitive lookup over a dict's keys."""
+    norm = {k.lower().replace('_', '').replace(' ', ''): v for k, v in d.items()}
+    for k in keys:
+        v = norm.get(k)
+        if v not in (None, ''):
+            return v
+    return default
+
+
 def parse_key_clauses(raw_markdown):
     """Parse LLM markdown output for key clauses into structured dicts."""
     clauses = []
@@ -127,11 +170,7 @@ def parse_key_clauses(raw_markdown):
             clause['section'] = sec.group(0).rstrip('.')
 
         # Infer risk impact from keywords
-        text = (clause['extractedClause'] + ' ' + clause['summary']).lower()
-        if any(w in text for w in ['liability', 'indemnif', 'data breach', 'gdpr', 'penalty']):
-            clause['riskImpact'] = 'High'
-        elif any(w in text for w in ['confidential', 'force majeure', 'minor']):
-            clause['riskImpact'] = 'Low'
+        clause['riskImpact'] = _impact_for(clause['extractedClause'] + ' ' + clause['summary'])
 
         if clause['extractedClause'] or clause['summary']:
             clause['id'] = f'KC-{len(clauses) + 1:03d}'
@@ -168,13 +207,7 @@ def parse_risk_assessment(raw_text):
         risk['riskLevel'] = _canon_level(_field('Risk Level', block))
         risk['likelihood'] = _canon_likelihood(_field('Likelihood', block))
         risk['potentialConsequence'] = _field('Potential Consequence', block, multiline=True) or ''
-
-        # Compute numeric score from the canonical values
-        level_scores = {'High': 8, 'Medium': 5, 'Low': 3}
-        like_mult = {'Likely': 1.1, 'Possible': 1.0, 'Unlikely': 0.8}
-        base = level_scores.get(risk['riskLevel'], 5)
-        mult = like_mult.get(risk['likelihood'], 1.0)
-        risk['score'] = min(10, round(base * mult))
+        risk['score'] = _score_for(risk['riskLevel'], risk['likelihood'])
 
         if risk['potentialConsequence'] or risk['clauseReference']:
             risks.append(risk)
@@ -207,18 +240,8 @@ def parse_recommended_actions(raw_text):
         action['riskLevel'] = _canon_level(_field('Risk Level', block))
         action['action'] = _field('Recommended Action', block, multiline=True) or ''
 
-        # Infer priority from risk level
-        priority_map = {'High': 'Urgent', 'Medium': 'High', 'Low': 'Medium'}
-        action['priority'] = priority_map.get(action['riskLevel'], 'Medium')
-
-        # Infer category from action text
-        text = action['action'].lower()
-        if any(w in text for w in ['negotiate', 'increase', 'reduce', 'remove cap']):
-            action['category'] = 'Negotiation'
-        elif any(w in text for w in ['compliance', 'audit', 'gdpr', 'insurance']):
-            action['category'] = 'Compliance'
-        elif any(w in text for w in ['monitor', 'track', 'review period']):
-            action['category'] = 'Monitoring'
+        action['priority'] = _priority_for(action['riskLevel'])
+        action['category'] = _category_for(action['action'])
 
         if action['clause'] or action['action']:
             actions.append(action)
@@ -232,6 +255,82 @@ def parse_recommended_actions(raw_text):
             'category': 'Legal Review'
         })
     return actions
+
+
+# --- Structured (JSON) path -------------------------------------------------
+# When the pipeline nodes emit structured lists (preferred), consume them
+# directly and skip the brittle markdown parsing. Each normalizer is tolerant of
+# LLM key casing / synonyms and reuses the same canonicalizers as the parsers,
+# so the dashboard shape is identical regardless of which path produced it.
+
+def _clauses_from_data(items):
+    out = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        extracted = str(_pick_ci(it, 'extractedclause', 'clause', 'text', default=''))
+        summary = str(_pick_ci(it, 'summary', 'description', default=''))
+        raw_impact = _pick_ci(it, 'riskimpact', 'impact', 'risklevel', 'severity', default='')
+        impact = _canon_level(raw_impact) if raw_impact else _impact_for(extracted + ' ' + summary)
+        if extracted or summary:
+            out.append({
+                'id': f'KC-{len(out) + 1:03d}',
+                'clauseType': str(_pick_ci(it, 'clausetype', 'type', default='General')) or 'General',
+                'section': str(_pick_ci(it, 'section', 'reference', default='')),
+                'extractedClause': extracted,
+                'summary': summary,
+                'riskImpact': impact,
+            })
+    return out
+
+
+def _risks_from_data(items):
+    out = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        ref = str(_pick_ci(it, 'clausereference', 'reference', 'clause', default=''))
+        conseq = str(_pick_ci(it, 'potentialconsequence', 'consequence', 'impact', default=''))
+        level = _canon_level(_pick_ci(it, 'risklevel', 'level', 'severity', default=''))
+        like = _canon_likelihood(_pick_ci(it, 'likelihood', 'probability', default=''))
+        if conseq or ref:
+            out.append({
+                'riskType': str(_pick_ci(it, 'risktype', 'type', 'category', default='General')) or 'General',
+                'clauseReference': ref,
+                'riskLevel': level,
+                'likelihood': like,
+                'potentialConsequence': conseq,
+                'score': _score_for(level, like),
+            })
+    return out
+
+
+def _actions_from_data(items):
+    out = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        clause = str(_pick_ci(it, 'clause', 'clausereference', 'reference', default=''))
+        action = str(_pick_ci(it, 'recommendedaction', 'action', 'recommendation', default=''))
+        level = _canon_level(_pick_ci(it, 'risklevel', 'level', 'severity', default=''))
+        if clause or action:
+            out.append({
+                'clause': clause,
+                'riskLevel': level,
+                'action': action,
+                'priority': str(_pick_ci(it, 'priority', default='')) or _priority_for(level),
+                'category': str(_pick_ci(it, 'category', default='')) or _category_for(action),
+            })
+    return out
+
+
+def _structured_list(state, *keys):
+    """Return the first state value under keys that is a non-empty list, else None."""
+    for k in keys:
+        v = state.get(k)
+        if isinstance(v, list) and v:
+            return v
+    return None
 
 
 def compute_risk_score(risks):
@@ -328,9 +427,17 @@ def generate_dashboard_html(state):
     Returns:
         Complete HTML string for the visualization dashboard.
     """
-    clauses = parse_key_clauses(state.get('key_clauses', ''))
-    risks = parse_risk_assessment(state.get('risk_assessment_report', ''))
-    actions = parse_recommended_actions(state.get('recommended_actions', ''))
+    # Prefer structured data from the pipeline nodes; fall back to parsing the
+    # LLM markdown when structured lists aren't present (backward compatible).
+    cl = _structured_list(state, 'key_clauses_data', 'clauses')
+    clauses = _clauses_from_data(cl) if cl else parse_key_clauses(state.get('key_clauses', ''))
+
+    rk = _structured_list(state, 'risk_assessment_data', 'risk_assessment', 'risks')
+    risks = _risks_from_data(rk) if rk else parse_risk_assessment(state.get('risk_assessment_report', ''))
+
+    ac = _structured_list(state, 'recommended_actions_data', 'actions')
+    actions = _actions_from_data(ac) if ac else parse_recommended_actions(state.get('recommended_actions', ''))
+
     overall_score = compute_risk_score(risks)
     metadata = _build_metadata(state)
     timeline = _build_timeline(metadata)
