@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'sha384-RRU0tBcsTr+kpIK2ztoC7NjKAGvUr4gcVZ6fPsdX/wjg+GTxyYv4n7N3QzMHldX7'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'sha384-+R6qSdV9eUC7rlSQmB7XaE1PP/pSfvpUD6iNmYAgDpya/Uy4n79CAHl5qFvDqB8l'">
     <title>Contract Risk Assessment Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
@@ -751,6 +751,14 @@
             letter-spacing: inherit; text-transform: inherit; cursor: pointer; padding: 0;
         }
         .actions-table th button.th-sort:hover { color: var(--text-primary); }
+
+        /* === Top priority risks callout === */
+        .priority-section { grid-column: 1 / -1; }
+        .top-risks-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+        .top-risk-item { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 1rem; }
+        .priority-index { font-size: 0.9rem; color: var(--text-secondary); }
+        .priority-index strong { color: var(--text-primary); }
+        .top-risk-rank { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
     </style>
 </head>
 <body>
@@ -770,6 +778,15 @@
 <main class="dashboard">
   <!-- Stats Bar -->
   <section class="stats-bar" id="statsBar"></section>
+
+  <!-- Top Priority Risks callout (severity-weighted, ISO 31000 prioritization) -->
+  <section class="card priority-section" aria-labelledby="priorityHeading">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
+      <h2 class="section-title" id="priorityHeading" style="margin-bottom:0;font-size:1.1rem;font-weight:600;">Top Priority Risks</h2>
+      <div id="priorityIndex" class="priority-index"></div>
+    </div>
+    <div id="topRisks" class="top-risks-grid"></div>
+  </section>
 
   <!-- Row 2: Gauge, Heatmap, Radar -->
   <section class="card gauge-section">
@@ -1186,7 +1203,34 @@
       "type": "milestone"
     }
   ],
-  "overallRiskScore": 6.4
+  "overallRiskScore": 6.4,
+  "weightedRiskScore": 6.4,
+  "topRisks": [
+    {
+      "riskType": "Compliance",
+      "clauseReference": "Section 6.1 - Data Protection",
+      "riskLevel": "High",
+      "likelihood": "Possible",
+      "potentialConsequence": "Regulatory fines up to 4% of annual revenue for GDPR non-compliance.",
+      "score": 9
+    },
+    {
+      "riskType": "Legal",
+      "clauseReference": "Section 8.1 - Liability Cap",
+      "riskLevel": "High",
+      "likelihood": "Possible",
+      "potentialConsequence": "Client bears unrecoverable losses exceeding the liability cap.",
+      "score": 8
+    },
+    {
+      "riskType": "Financial",
+      "clauseReference": "Section 8.1 - Liability Cap",
+      "riskLevel": "High",
+      "likelihood": "Likely",
+      "potentialConsequence": "12-month fee cap limits financial recovery in catastrophic failures.",
+      "score": 8
+    }
+  ]
 }
 </script>
 <script>
@@ -1757,6 +1801,31 @@ function renderA11y() {
     + clauseRows + '</tbody></table>';
 }
 
+// Severity-weighted "priority index" and the top few risks, so the most severe
+// exposure is surfaced up front rather than diluted by the flat-mean gauge.
+function renderTopRisks() {
+  const d = CONTRACT_DATA;
+  const idx = document.getElementById('priorityIndex');
+  if (idx) {
+    const wr = (d.weightedRiskScore !== undefined && d.weightedRiskScore !== null) ? d.weightedRiskScore : 'N/A';
+    idx.innerHTML = 'Severity-weighted risk index: <strong>' + esc(String(wr)) + ' / 10</strong>';
+  }
+  const items = d.topRisks || [];
+  const html = items.map((r, i) => {
+    const lvl = (r.riskLevel || '').toLowerCase();
+    return '<div class="top-risk-item" style="border-left:4px solid ' + getRiskColor(r.riskLevel) + '">'
+      + '<div class="top-risk-rank">Priority ' + (i + 1) + '</div>'
+      + '<div style="display:flex;justify-content:space-between;gap:0.5rem;align-items:flex-start;margin-top:0.2rem">'
+      + '<span style="font-weight:600">' + esc(r.riskType || 'Risk') + '</span>'
+      + '<span class="badge badge-' + lvl + '">' + esc(r.riskLevel || '') + '</span></div>'
+      + '<div style="font-size:0.8rem;color:var(--text-secondary);margin:0.3rem 0">' + esc(r.clauseReference || '') + '</div>'
+      + '<div style="font-size:0.85rem">' + esc(r.potentialConsequence || '') + '</div>'
+      + '<div style="margin-top:0.4rem;font-size:0.8rem;color:var(--text-secondary)">Score <strong style="color:var(--text-primary)">' + esc(String(r.score)) + '/10</strong> &middot; ' + esc(r.likelihood || '') + ' likelihood</div>'
+      + '</div>';
+  }).join('');
+  document.getElementById('topRisks').innerHTML = html || '<div style="color:var(--text-secondary)">No risks identified.</div>';
+}
+
 function toggleCard(card) {
   const expanded = card.classList.toggle('expanded');
   card.setAttribute('aria-expanded', expanded ? 'true' : 'false');
@@ -1793,6 +1862,7 @@ function bindEvents() {
 
 document.addEventListener('DOMContentLoaded', function() {
   renderStats();
+  renderTopRisks();
   renderGauge();
   renderHeatmap();
   renderRadar();

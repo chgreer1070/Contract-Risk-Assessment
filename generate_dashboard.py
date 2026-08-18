@@ -105,11 +105,26 @@ def _canon_likelihood(value, default='Possible'):
 
 # --- Shared derivations (used by both the markdown parsers and the JSON path) -
 
+# ISO 31000 / IEC 31010 style risk matrix. Rows are the consequence/impact
+# level, columns are the likelihood; each cell is the 0-10 risk score used across
+# the dashboard. Encoding it as an explicit, documented table (instead of an
+# ad-hoc multiplier) keeps the scoring auditable and defensible, per ISO 31000's
+# emphasis on a documented likelihood x consequence method.
+RISK_MATRIX = {
+    'High':   {'Unlikely': 6, 'Possible': 8, 'Likely': 9},
+    'Medium': {'Unlikely': 4, 'Possible': 5, 'Likely': 6},
+    'Low':    {'Unlikely': 2, 'Possible': 3, 'Likely': 3},
+}
+
+# Relative weight of each severity band, used to prioritize the most severe risks
+# in the weighted index and the "top risks" selection.
+RISK_LEVEL_WEIGHTS = {'High': 3, 'Medium': 2, 'Low': 1}
+
+
 def _score_for(level, likelihood):
-    """Numeric 0-10 risk score from canonical level + likelihood."""
-    level_scores = {'High': 8, 'Medium': 5, 'Low': 3}
-    like_mult = {'Likely': 1.1, 'Possible': 1.0, 'Unlikely': 0.8}
-    return min(10, round(level_scores.get(level, 5) * like_mult.get(likelihood, 1.0)))
+    """0-10 risk score from the documented likelihood x consequence matrix."""
+    row = RISK_MATRIX.get(level, RISK_MATRIX['Medium'])
+    return row.get(likelihood, row['Possible'])
 
 
 def _priority_for(level):
@@ -334,10 +349,40 @@ def _structured_list(state, *keys):
 
 
 def compute_risk_score(risks):
-    """Compute overall 0-10 risk score from parsed risks."""
+    """Compute overall 0-10 risk score from parsed risks (flat mean)."""
     if not risks:
         return 0
     return round(sum(r['score'] for r in risks) / len(risks), 1)
+
+
+def compute_weighted_risk_score(risks):
+    """Severity-weighted 0-10 index that emphasizes the most severe risks.
+
+    Unlike the flat mean (:func:`compute_risk_score`), each risk contributes in
+    proportion to its severity band (High=3, Medium=2, Low=1), so a handful of
+    catastrophic risks are not diluted by many minor ones. This reflects
+    ISO 31000's prioritization intent, where worst-case exposure drives
+    treatment decisions.
+    """
+    if not risks:
+        return 0
+    acc = 0.0
+    total_w = 0
+    for r in risks:
+        w = RISK_LEVEL_WEIGHTS.get(r.get('riskLevel'), 1)
+        acc += r.get('score', 0) * w
+        total_w += w
+    return round(acc / total_w, 1) if total_w else 0
+
+
+def top_risks(risks, n=3):
+    """Return the ``n`` highest-priority risks, by score then severity weight."""
+    ordered = sorted(
+        risks,
+        key=lambda r: (r.get('score', 0), RISK_LEVEL_WEIGHTS.get(r.get('riskLevel'), 1)),
+        reverse=True,
+    )
+    return ordered[:n]
 
 
 # --- Contract metadata + timeline --------------------------------------------
@@ -463,7 +508,9 @@ def generate_dashboard_html(state):
             {'name': 'Actions', 'icon': '✅', 'status': 'complete', 'duration': 'done'}
         ],
         'timeline': timeline,
-        'overallRiskScore': overall_score
+        'overallRiskScore': overall_score,
+        'weightedRiskScore': compute_weighted_risk_score(risks),
+        'topRisks': top_risks(risks, 3),
     }
 
     data_json = json.dumps(data, indent=2, ensure_ascii=False)
