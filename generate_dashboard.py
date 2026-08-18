@@ -469,13 +469,21 @@ def generate_dashboard_html(state):
     data_json = json.dumps(data, indent=2, ensure_ascii=False)
 
     # Escape for safe embedding inside an HTML <script> block. Contract text is
-    # attacker-influenceable (it comes from a parsed PDF), so this is required:
-    #  - '</' would let a literal '</script>' in contract text close the <script>
-    #    tag during HTML parsing, before any JS runs, breaking out / injecting.
+    # attacker-influenceable (it comes from a parsed PDF), so this is required.
+    # We follow the OWASP / Flask ``htmlsafe_json_dumps`` pattern and escape every
+    # character that could let contract text break out of the script context, as
+    # Unicode escapes that JSON.parse still decodes back to the original text:
+    #  - '<' and '>' so a literal '</script>' (or any '<...>') cannot close the
+    #    <script> element or introduce markup during HTML parsing, before JS runs.
+    #  - '&' to avoid ambiguous HTML entities in the embedded source.
+    #  - "'" so the payload is also safe if embedded in a single-quoted context.
     #  - U+2028 / U+2029 are valid in JSON but are JS line terminators that would
     #    break the string literal.
     data_json = (data_json
-                 .replace('</', '<\\/')
+                 .replace('<', '\\u003c')
+                 .replace('>', '\\u003e')
+                 .replace('&', '\\u0026')
+                 .replace("'", '\\u0027')
                  .replace('\u2028', '\\u2028')
                  .replace('\u2029', '\\u2029'))
 

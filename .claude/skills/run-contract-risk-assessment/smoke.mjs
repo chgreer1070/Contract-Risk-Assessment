@@ -40,9 +40,13 @@ function startServer() {
       try {
         let data = await readFile(filePath, 'utf8');
         if (filePath.endsWith('.html')) {
+          // Serve Chart.js from node_modules locally (the CDN is unavailable in
+          // headless/offline test envs). Replace the whole tag so the production
+          // Subresource-Integrity hash (computed for the minified CDN build)
+          // does not reject the local unminified copy served here.
           data = data.replace(
-            'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js',
-            '/chart.umd.js'
+            /<script src="https:\/\/cdn\.jsdelivr\.net\/npm\/chart\.js@[^"]*"[^>]*><\/script>/,
+            '<script src="/chart.umd.js"></script>'
           );
         }
         resp.writeHead(200, { 'Content-Type': MIME[extname(filePath)] || 'text/plain' });
