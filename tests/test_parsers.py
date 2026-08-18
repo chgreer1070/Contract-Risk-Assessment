@@ -247,12 +247,15 @@ def test_compute_risk_score_average():
 # --------------------------------------------------------------------------- #
 
 def _extract_contract_data(html):
-    """Pull the injected CONTRACT_DATA JSON object back out of the HTML."""
-    m = re.search(r'const CONTRACT_DATA = (\{.*?\n\});', html, re.DOTALL)
-    assert m, "CONTRACT_DATA block not found in generated HTML"
-    # Undo the HTML-script escaping so json can parse it.
-    raw = m.group(1).replace('<\\/', '</')
-    return json.loads(raw)
+    """Pull the injected data back out of the JSON data island."""
+    m = re.search(
+        r'<script type="application/json" id="contract-data">\n(.*?)\n</script>',
+        html, re.DOTALL,
+    )
+    assert m, "contract-data island not found in generated HTML"
+    # The island holds valid JSON (dangerous chars are \\uXXXX escapes), so json
+    # parses it directly, exactly as the browser's JSON.parse would.
+    return json.loads(m.group(1))
 
 
 def test_script_breakout_is_neutralized():
@@ -293,7 +296,7 @@ def test_backslashes_in_contract_text_roundtrip():
 def test_generated_html_has_single_contract_data_block():
     state = {'key_clauses': '', 'risk_assessment_report': '', 'recommended_actions': ''}
     html = generate_dashboard_html(state)
-    assert html.count('const CONTRACT_DATA = {') == 1
+    assert html.count('id="contract-data"') == 1
 
 
 # --------------------------------------------------------------------------- #

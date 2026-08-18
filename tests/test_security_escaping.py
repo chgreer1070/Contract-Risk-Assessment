@@ -19,8 +19,11 @@ from generate_dashboard import generate_dashboard_html  # noqa: E402
 
 
 def _data_block(html):
-    m = re.search(r'const CONTRACT_DATA = (\{.*?\n\});', html, re.DOTALL)
-    assert m, "CONTRACT_DATA block not found in generated HTML"
+    m = re.search(
+        r'<script type="application/json" id="contract-data">\n(.*?)\n</script>',
+        html, re.DOTALL,
+    )
+    assert m, "contract-data island not found in generated HTML"
     return m.group(1)
 
 
@@ -108,4 +111,4 @@ def test_single_quote_roundtrips():
 def test_exactly_one_contract_data_block_after_escaping():
     state = {'key_clauses': '', 'risk_assessment_report': '', 'recommended_actions': ''}
     html = generate_dashboard_html(state)
-    assert html.count('const CONTRACT_DATA = {') == 1
+    assert html.count('id="contract-data"') == 1

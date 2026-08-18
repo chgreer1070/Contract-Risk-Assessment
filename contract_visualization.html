@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'sha384-RRU0tBcsTr+kpIK2ztoC7NjKAGvUr4gcVZ6fPsdX/wjg+GTxyYv4n7N3QzMHldX7'">
     <title>Contract Risk Assessment Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
@@ -14,12 +15,19 @@
             --bg-card: #1e293b;
             --bg-card-hover: #334155;
             --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
+            --text-secondary: #a8b3c7;
             --border-color: #334155;
             --risk-high: #ef4444;
             --risk-medium: #f59e0b;
             --risk-low: #22c55e;
+            /* Text-safe variants: WCAG AA contrast for small text on the tinted
+               badge/label backgrounds used in each theme. */
+            --risk-high-text: #f87171;
+            --risk-medium-text: #fbbf24;
+            --risk-low-text: #4ade80;
             --accent: #3b82f6;
+            --accent-strong: #2563eb; /* button background that carries white text */
+            --accent-text: #93c5fd;   /* accent-colored small text on dark surfaces */
             --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
         }
 
@@ -28,8 +36,13 @@
             --bg-card: #ffffff;
             --bg-card-hover: #f1f5f9;
             --text-primary: #1e293b;
-            --text-secondary: #64748b;
+            --text-secondary: #475569;
             --border-color: #e2e8f0;
+            --risk-high-text: #b91c1c;
+            --risk-medium-text: #92400e;
+            --risk-low-text: #166534;
+            --accent-strong: #2563eb;
+            --accent-text: #1d4ed8;
             --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
@@ -366,17 +379,17 @@
 
         .badge-high {
             background: rgba(239, 68, 68, 0.15);
-            color: var(--risk-high);
+            color: var(--risk-high-text);
         }
 
         .badge-medium {
             background: rgba(245, 158, 11, 0.15);
-            color: var(--risk-medium);
+            color: var(--risk-medium-text);
         }
 
         .badge-low {
             background: rgba(34, 197, 94, 0.15);
-            color: var(--risk-low);
+            color: var(--risk-low-text);
         }
 
         /* ============================================
@@ -384,7 +397,7 @@
            ============================================ */
         .badge-category {
             background: rgba(59, 130, 246, 0.15);
-            color: var(--accent);
+            color: var(--accent-text);
         }
 
         .badge-category-alt {
@@ -407,9 +420,9 @@
         }
 
         .filter-btn.active {
-            background: var(--accent);
+            background: var(--accent-strong);
             color: white;
-            border-color: var(--accent);
+            border-color: var(--accent-strong);
         }
 
         .filter-btn:hover:not(.active) {
@@ -491,7 +504,7 @@
             top: -28px;
             transform: translateX(-50%);
             font-size: 0.65rem;
-            color: var(--risk-high);
+            color: var(--risk-high-text);
             font-weight: 600;
         }
 
@@ -679,7 +692,7 @@
         .no-results { text-align:center; padding:2rem; color:var(--text-secondary); font-style:italic; display:none; }
 
         /* === Export button === */
-        .export-btn { background:var(--accent); color:white; border:none; padding:0.5rem 1rem; border-radius:8px; cursor:pointer; font-size:0.85rem; font-weight:600; transition:all 0.2s; }
+        .export-btn { background:var(--accent-strong); color:white; border:none; padding:0.5rem 1rem; border-radius:8px; cursor:pointer; font-size:0.85rem; font-weight:600; transition:all 0.2s; }
         .export-btn:hover { opacity:0.85; }
 
         /* === Print styles === */
@@ -701,6 +714,43 @@
             .badge { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
             * { animation:none !important; }
         }
+
+        /* === Accessibility helpers === */
+        /* Screen-reader-only content: present in the accessibility tree (unlike
+           display:none) but visually hidden. Used for chart data-table mirrors
+           and the live region. */
+        .visually-hidden {
+            position: absolute !important;
+            width: 1px; height: 1px;
+            padding: 0; margin: -1px;
+            overflow: hidden; clip: rect(0 0 0 0);
+            white-space: nowrap; border: 0;
+        }
+        /* Visible keyboard focus ring (WCAG 2.4.7 Focus Visible) */
+        a:focus, button:focus, input:focus, select:focus, [tabindex]:focus,
+        .clause-card:focus, .heatmap-cell:focus, .actions-table th button:focus {
+            outline: 3px solid #2563eb;
+            outline-offset: 2px;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.45);
+        }
+        /* Heatmap cells are <button>s inside <td>s; keep their original look. */
+        .heatmap-table td.heatmap-td { padding: 0; }
+        button.heatmap-cell {
+            width: 100%;
+            border: none;
+            color: inherit;
+            font: inherit;
+            font-weight: 700;
+            font-size: 1.2rem;
+            cursor: pointer;
+            display: block;
+        }
+        /* Sortable header buttons look like the plain <th> text they replaced. */
+        .actions-table th button.th-sort {
+            background: none; border: none; color: inherit; font: inherit;
+            letter-spacing: inherit; text-transform: inherit; cursor: pointer; padding: 0;
+        }
+        .actions-table th button.th-sort:hover { color: var(--text-primary); }
     </style>
 </head>
 <body>
@@ -710,11 +760,12 @@
     <p id="headerSubtitle" style="color:var(--text-secondary);font-size:0.9rem;"></p>
   </div>
   <div style="display:flex;gap:0.5rem;align-items:center;">
-    <button class="export-btn" onclick="window.print()" title="Export / Print">Export PDF</button>
-    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+    <button class="export-btn" id="exportBtn" title="Export / Print" aria-label="Export or print this dashboard as PDF">Export PDF</button>
+    <button class="theme-toggle" id="themeToggle" title="Toggle theme" aria-label="Toggle dark and light theme">🌙</button>
   </div>
 </header>
 <div id="tooltip"></div>
+<div id="liveRegion" class="visually-hidden" aria-live="polite"></div>
 
 <main class="dashboard">
   <!-- Stats Bar -->
@@ -754,12 +805,12 @@
   <section class="card cards-section">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
       <div class="section-title" style="margin-bottom:0">Key Contract Clauses</div>
-      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;" id="filterButtons">
-        <button class="filter-btn active" onclick="filterCards('all')">All</button>
-        <button class="filter-btn" onclick="filterCards('High')">High Risk</button>
-        <button class="filter-btn" onclick="filterCards('Medium')">Medium</button>
-        <button class="filter-btn" onclick="filterCards('Low')">Low</button>
-        <input type="text" class="search-input" id="searchInput" placeholder="Search clauses..." oninput="searchAll(this.value)">
+      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;" id="filterButtons" role="group" aria-label="Filter clauses by risk level">
+        <button class="filter-btn active" data-filter="all" aria-pressed="true">All</button>
+        <button class="filter-btn" data-filter="High" aria-pressed="false">High Risk</button>
+        <button class="filter-btn" data-filter="Medium" aria-pressed="false">Medium</button>
+        <button class="filter-btn" data-filter="Low" aria-pressed="false">Low</button>
+        <input type="text" class="search-input" id="searchInput" placeholder="Search clauses..." aria-label="Search contract clauses">
       </div>
     </div>
     <div class="clause-cards-grid" id="clauseCards"></div>
@@ -780,7 +831,7 @@
   <section class="card table-section">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
       <div class="section-title" style="margin-bottom:0">Recommended Actions</div>
-      <select id="tableFilter" onchange="filterTable(this.value)" style="padding:0.4rem 0.8rem;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-primary);font-size:0.85rem;">
+      <select id="tableFilter" aria-label="Filter recommended actions by risk level" style="padding:0.4rem 0.8rem;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-primary);font-size:0.85rem;">
         <option value="all">All Risk Levels</option>
         <option value="High">High</option>
         <option value="Medium">Medium</option>
@@ -791,11 +842,11 @@
       <table class="actions-table" id="actionsTable">
         <thead>
           <tr>
-            <th onclick="sortTable(0)">Priority ↕</th>
-            <th onclick="sortTable(1)">Clause ↕</th>
-            <th onclick="sortTable(2)">Risk Level ↕</th>
-            <th onclick="sortTable(3)">Recommended Action ↕</th>
-            <th onclick="sortTable(4)">Category ↕</th>
+            <th scope="col"><button type="button" class="th-sort" data-col="0" aria-label="Sort by priority">Priority ↕</button></th>
+            <th scope="col"><button type="button" class="th-sort" data-col="1" aria-label="Sort by clause">Clause ↕</button></th>
+            <th scope="col"><button type="button" class="th-sort" data-col="2" aria-label="Sort by risk level">Risk Level ↕</button></th>
+            <th scope="col"><button type="button" class="th-sort" data-col="3" aria-label="Sort by recommended action">Recommended Action ↕</button></th>
+            <th scope="col"><button type="button" class="th-sort" data-col="4" aria-label="Sort by category">Category ↕</button></th>
           </tr>
         </thead>
         <tbody id="actionsBody"></tbody>
@@ -808,71 +859,338 @@
     <div class="section-title">Risk Comparison by Category</div>
     <div class="chart-wrap" style="height:300px"><canvas id="comparisonChart"></canvas></div>
   </section>
+
+  <!-- Screen-reader-only data tables that mirror the canvas charts, the real
+       text alternative required by WCAG 1.1.1 (canvas is a black box to AT). -->
+  <section class="visually-hidden" id="a11ySummary" aria-label="Accessible data summary of the charts"></section>
 </main>
-<script>
-const CONTRACT_DATA = {
-  metadata: {
-    title: "SaaS Platform Services Agreement",
-    parties: ["Acme Corp (Client)", "CloudServe Inc. (Provider)"],
-    effectiveDate: "2025-01-15",
-    expirationDate: "2027-01-14",
-    contractValue: "$480,000",
-    jurisdiction: "State of Delaware, USA"
+<script type="application/json" id="contract-data">
+{
+  "metadata": {
+    "title": "SaaS Platform Services Agreement",
+    "parties": [
+      "Acme Corp (Client)",
+      "CloudServe Inc. (Provider)"
+    ],
+    "effectiveDate": "2025-01-15",
+    "expirationDate": "2027-01-14",
+    "contractValue": "$480,000",
+    "jurisdiction": "State of Delaware, USA"
   },
-  keyClauses: [
-    {id:"KC-001",clauseType:"Liability",section:"Section 8.1",extractedClause:"Provider's total aggregate liability shall not exceed the total fees paid by Client in the 12-month period preceding the claim. In no event shall Provider be liable for indirect, incidental, or consequential damages.",summary:"Caps provider liability to 12 months of fees paid. Excludes indirect damages.",riskImpact:"High"},
-    {id:"KC-002",clauseType:"Termination",section:"Section 9.2",extractedClause:"Either party may terminate this Agreement with 30 days written notice upon material breach that remains uncured for 15 business days after notification.",summary:"Allows termination for uncured material breach with 30-day notice period.",riskImpact:"Medium"},
-    {id:"KC-003",clauseType:"Confidentiality",section:"Section 5.1",extractedClause:"Both parties agree to maintain strict confidentiality of proprietary information for the duration of this Agreement and 3 years following termination.",summary:"Mutual NDA obligations surviving 3 years post-termination.",riskImpact:"Low"},
-    {id:"KC-004",clauseType:"Indemnification",section:"Section 8.3",extractedClause:"Provider shall indemnify and hold harmless Client against third-party claims alleging that the Service infringes intellectual property rights, excluding claims arising from Client modifications.",summary:"Provider indemnifies against third-party IP infringement claims only.",riskImpact:"High"},
-    {id:"KC-005",clauseType:"Data Protection",section:"Section 6.1",extractedClause:"Provider shall comply with GDPR, CCPA, and applicable data protection laws. Provider must notify Client of any data breach within 72 hours of discovery.",summary:"Requires GDPR/CCPA compliance with 72-hour breach notification.",riskImpact:"High"},
-    {id:"KC-006",clauseType:"IP Rights",section:"Section 7.1",extractedClause:"Client retains all intellectual property rights to its data and content. Provider retains all rights to the platform, including improvements made during the term.",summary:"Clear IP separation: client owns data, provider owns platform.",riskImpact:"Medium"},
-    {id:"KC-007",clauseType:"SLA/Performance",section:"Section 4.1",extractedClause:"Provider guarantees 99.9% monthly uptime. Service credits of 5% of monthly fees apply for each 0.1% below the SLA target, capped at 30% of monthly fees.",summary:"99.9% uptime SLA with capped service credits for downtime.",riskImpact:"Medium"},
-    {id:"KC-008",clauseType:"Force Majeure",section:"Section 10.1",extractedClause:"Neither party shall be liable for delays caused by events beyond reasonable control, including natural disasters, war, or pandemic, for a period not exceeding 90 days.",summary:"Excuses performance for uncontrollable events up to 90 days.",riskImpact:"Low"}
+  "keyClauses": [
+    {
+      "id": "KC-001",
+      "clauseType": "Liability",
+      "section": "Section 8.1",
+      "extractedClause": "Provider's total aggregate liability shall not exceed the total fees paid by Client in the 12-month period preceding the claim. In no event shall Provider be liable for indirect, incidental, or consequential damages.",
+      "summary": "Caps provider liability to 12 months of fees paid. Excludes indirect damages.",
+      "riskImpact": "High"
+    },
+    {
+      "id": "KC-002",
+      "clauseType": "Termination",
+      "section": "Section 9.2",
+      "extractedClause": "Either party may terminate this Agreement with 30 days written notice upon material breach that remains uncured for 15 business days after notification.",
+      "summary": "Allows termination for uncured material breach with 30-day notice period.",
+      "riskImpact": "Medium"
+    },
+    {
+      "id": "KC-003",
+      "clauseType": "Confidentiality",
+      "section": "Section 5.1",
+      "extractedClause": "Both parties agree to maintain strict confidentiality of proprietary information for the duration of this Agreement and 3 years following termination.",
+      "summary": "Mutual NDA obligations surviving 3 years post-termination.",
+      "riskImpact": "Low"
+    },
+    {
+      "id": "KC-004",
+      "clauseType": "Indemnification",
+      "section": "Section 8.3",
+      "extractedClause": "Provider shall indemnify and hold harmless Client against third-party claims alleging that the Service infringes intellectual property rights, excluding claims arising from Client modifications.",
+      "summary": "Provider indemnifies against third-party IP infringement claims only.",
+      "riskImpact": "High"
+    },
+    {
+      "id": "KC-005",
+      "clauseType": "Data Protection",
+      "section": "Section 6.1",
+      "extractedClause": "Provider shall comply with GDPR, CCPA, and applicable data protection laws. Provider must notify Client of any data breach within 72 hours of discovery.",
+      "summary": "Requires GDPR/CCPA compliance with 72-hour breach notification.",
+      "riskImpact": "High"
+    },
+    {
+      "id": "KC-006",
+      "clauseType": "IP Rights",
+      "section": "Section 7.1",
+      "extractedClause": "Client retains all intellectual property rights to its data and content. Provider retains all rights to the platform, including improvements made during the term.",
+      "summary": "Clear IP separation: client owns data, provider owns platform.",
+      "riskImpact": "Medium"
+    },
+    {
+      "id": "KC-007",
+      "clauseType": "SLA/Performance",
+      "section": "Section 4.1",
+      "extractedClause": "Provider guarantees 99.9% monthly uptime. Service credits of 5% of monthly fees apply for each 0.1% below the SLA target, capped at 30% of monthly fees.",
+      "summary": "99.9% uptime SLA with capped service credits for downtime.",
+      "riskImpact": "Medium"
+    },
+    {
+      "id": "KC-008",
+      "clauseType": "Force Majeure",
+      "section": "Section 10.1",
+      "extractedClause": "Neither party shall be liable for delays caused by events beyond reasonable control, including natural disasters, war, or pandemic, for a period not exceeding 90 days.",
+      "summary": "Excuses performance for uncontrollable events up to 90 days.",
+      "riskImpact": "Low"
+    }
   ],
-  riskAssessment: [
-    {riskType:"Legal",clauseReference:"Section 8.1 - Liability Cap",riskLevel:"High",likelihood:"Possible",potentialConsequence:"Client bears unrecoverable losses exceeding the liability cap.",score:8},
-    {riskType:"Legal",clauseReference:"Section 8.3 - Indemnification",riskLevel:"High",likelihood:"Unlikely",potentialConsequence:"Narrow indemnification may leave client exposed to non-IP claims.",score:7},
-    {riskType:"Compliance",clauseReference:"Section 6.1 - Data Protection",riskLevel:"High",likelihood:"Possible",potentialConsequence:"Regulatory fines up to 4% of annual revenue for GDPR non-compliance.",score:9},
-    {riskType:"Compliance",clauseReference:"Section 5.1 - Confidentiality",riskLevel:"Low",likelihood:"Unlikely",potentialConsequence:"Limited enforcement for confidentiality breaches post-termination.",score:3},
-    {riskType:"Financial",clauseReference:"Section 4.1 - SLA Credits",riskLevel:"Medium",likelihood:"Possible",potentialConsequence:"Capped credits may not compensate for business losses during outages.",score:6},
-    {riskType:"Financial",clauseReference:"Section 8.1 - Liability Cap",riskLevel:"High",likelihood:"Likely",potentialConsequence:"12-month fee cap limits financial recovery in catastrophic failures.",score:8},
-    {riskType:"Reputational",clauseReference:"Section 6.1 - Data Breach",riskLevel:"Medium",likelihood:"Possible",potentialConsequence:"72-hour notification may delay public response, increasing damage.",score:5},
-    {riskType:"Reputational",clauseReference:"Section 9.2 - Termination",riskLevel:"Low",likelihood:"Unlikely",potentialConsequence:"Abrupt termination could disrupt services and impact end-user trust.",score:3},
-    {riskType:"Operational",clauseReference:"Section 10.1 - Force Majeure",riskLevel:"Medium",likelihood:"Possible",potentialConsequence:"90-day force majeure may cause prolonged service disruption.",score:5},
-    {riskType:"Operational",clauseReference:"Section 4.1 - Uptime SLA",riskLevel:"Medium",likelihood:"Likely",potentialConsequence:"99.9% SLA allows ~8.7 hours downtime, insufficient for critical ops.",score:6},
-    {riskType:"Legal",clauseReference:"Section 7.1 - IP Rights",riskLevel:"Medium",likelihood:"Possible",potentialConsequence:"Provider retaining improvement rights may limit vendor switching.",score:5},
-    {riskType:"Compliance",clauseReference:"Section 9.2 - Termination",riskLevel:"Low",likelihood:"Unlikely",potentialConsequence:"No explicit data return/deletion obligations upon termination.",score:4}
+  "riskAssessment": [
+    {
+      "riskType": "Legal",
+      "clauseReference": "Section 8.1 - Liability Cap",
+      "riskLevel": "High",
+      "likelihood": "Possible",
+      "potentialConsequence": "Client bears unrecoverable losses exceeding the liability cap.",
+      "score": 8
+    },
+    {
+      "riskType": "Legal",
+      "clauseReference": "Section 8.3 - Indemnification",
+      "riskLevel": "High",
+      "likelihood": "Unlikely",
+      "potentialConsequence": "Narrow indemnification may leave client exposed to non-IP claims.",
+      "score": 7
+    },
+    {
+      "riskType": "Compliance",
+      "clauseReference": "Section 6.1 - Data Protection",
+      "riskLevel": "High",
+      "likelihood": "Possible",
+      "potentialConsequence": "Regulatory fines up to 4% of annual revenue for GDPR non-compliance.",
+      "score": 9
+    },
+    {
+      "riskType": "Compliance",
+      "clauseReference": "Section 5.1 - Confidentiality",
+      "riskLevel": "Low",
+      "likelihood": "Unlikely",
+      "potentialConsequence": "Limited enforcement for confidentiality breaches post-termination.",
+      "score": 3
+    },
+    {
+      "riskType": "Financial",
+      "clauseReference": "Section 4.1 - SLA Credits",
+      "riskLevel": "Medium",
+      "likelihood": "Possible",
+      "potentialConsequence": "Capped credits may not compensate for business losses during outages.",
+      "score": 6
+    },
+    {
+      "riskType": "Financial",
+      "clauseReference": "Section 8.1 - Liability Cap",
+      "riskLevel": "High",
+      "likelihood": "Likely",
+      "potentialConsequence": "12-month fee cap limits financial recovery in catastrophic failures.",
+      "score": 8
+    },
+    {
+      "riskType": "Reputational",
+      "clauseReference": "Section 6.1 - Data Breach",
+      "riskLevel": "Medium",
+      "likelihood": "Possible",
+      "potentialConsequence": "72-hour notification may delay public response, increasing damage.",
+      "score": 5
+    },
+    {
+      "riskType": "Reputational",
+      "clauseReference": "Section 9.2 - Termination",
+      "riskLevel": "Low",
+      "likelihood": "Unlikely",
+      "potentialConsequence": "Abrupt termination could disrupt services and impact end-user trust.",
+      "score": 3
+    },
+    {
+      "riskType": "Operational",
+      "clauseReference": "Section 10.1 - Force Majeure",
+      "riskLevel": "Medium",
+      "likelihood": "Possible",
+      "potentialConsequence": "90-day force majeure may cause prolonged service disruption.",
+      "score": 5
+    },
+    {
+      "riskType": "Operational",
+      "clauseReference": "Section 4.1 - Uptime SLA",
+      "riskLevel": "Medium",
+      "likelihood": "Likely",
+      "potentialConsequence": "99.9% SLA allows ~8.7 hours downtime, insufficient for critical ops.",
+      "score": 6
+    },
+    {
+      "riskType": "Legal",
+      "clauseReference": "Section 7.1 - IP Rights",
+      "riskLevel": "Medium",
+      "likelihood": "Possible",
+      "potentialConsequence": "Provider retaining improvement rights may limit vendor switching.",
+      "score": 5
+    },
+    {
+      "riskType": "Compliance",
+      "clauseReference": "Section 9.2 - Termination",
+      "riskLevel": "Low",
+      "likelihood": "Unlikely",
+      "potentialConsequence": "No explicit data return/deletion obligations upon termination.",
+      "score": 4
+    }
   ],
-  recommendedActions: [
-    {clause:"Section 8.1 - Liability Cap",riskLevel:"High",action:"Negotiate to increase liability cap to 2x annual fees. Add carve-outs for gross negligence.",priority:"Urgent",category:"Negotiation"},
-    {clause:"Section 8.3 - Indemnification",riskLevel:"High",action:"Expand indemnification to cover data breaches and regulatory fines.",priority:"Urgent",category:"Negotiation"},
-    {clause:"Section 6.1 - Data Protection",riskLevel:"High",action:"Require annual third-party security audits. Add data processing agreement.",priority:"Urgent",category:"Compliance"},
-    {clause:"Section 5.1 - Confidentiality",riskLevel:"Low",action:"Add specific remedies and liquidated damages for confidentiality breaches.",priority:"Low",category:"Legal Review"},
-    {clause:"Section 4.1 - SLA Credits",riskLevel:"Medium",action:"Negotiate higher service credit percentages and remove the 30% cap.",priority:"High",category:"Negotiation"},
-    {clause:"Section 8.1 - Liability (Financial)",riskLevel:"High",action:"Include cyber insurance requirement of minimum $5M coverage.",priority:"Urgent",category:"Compliance"},
-    {clause:"Section 6.1 - Data Breach",riskLevel:"Medium",action:"Reduce breach notification to 48 hours. Require provider to cover costs.",priority:"High",category:"Negotiation"},
-    {clause:"Section 9.2 - Termination",riskLevel:"Low",action:"Add explicit data portability and deletion requirements upon termination.",priority:"Medium",category:"Legal Review"},
-    {clause:"Section 10.1 - Force Majeure",riskLevel:"Medium",action:"Reduce force majeure period to 60 days with auto-termination right.",priority:"Medium",category:"Negotiation"},
-    {clause:"Section 4.1 - Uptime SLA",riskLevel:"Medium",action:"Negotiate 99.95% uptime for critical services with escalating credits.",priority:"High",category:"Negotiation"},
-    {clause:"Section 7.1 - IP Rights",riskLevel:"Medium",action:"Negotiate license-back provision for improvements from client data.",priority:"Medium",category:"Legal Review"},
-    {clause:"Section 9.2 - Data Return",riskLevel:"Low",action:"Add 90-day post-termination data access with certified deletion.",priority:"Medium",category:"Compliance"}
+  "recommendedActions": [
+    {
+      "clause": "Section 8.1 - Liability Cap",
+      "riskLevel": "High",
+      "action": "Negotiate to increase liability cap to 2x annual fees. Add carve-outs for gross negligence.",
+      "priority": "Urgent",
+      "category": "Negotiation"
+    },
+    {
+      "clause": "Section 8.3 - Indemnification",
+      "riskLevel": "High",
+      "action": "Expand indemnification to cover data breaches and regulatory fines.",
+      "priority": "Urgent",
+      "category": "Negotiation"
+    },
+    {
+      "clause": "Section 6.1 - Data Protection",
+      "riskLevel": "High",
+      "action": "Require annual third-party security audits. Add data processing agreement.",
+      "priority": "Urgent",
+      "category": "Compliance"
+    },
+    {
+      "clause": "Section 5.1 - Confidentiality",
+      "riskLevel": "Low",
+      "action": "Add specific remedies and liquidated damages for confidentiality breaches.",
+      "priority": "Low",
+      "category": "Legal Review"
+    },
+    {
+      "clause": "Section 4.1 - SLA Credits",
+      "riskLevel": "Medium",
+      "action": "Negotiate higher service credit percentages and remove the 30% cap.",
+      "priority": "High",
+      "category": "Negotiation"
+    },
+    {
+      "clause": "Section 8.1 - Liability (Financial)",
+      "riskLevel": "High",
+      "action": "Include cyber insurance requirement of minimum $5M coverage.",
+      "priority": "Urgent",
+      "category": "Compliance"
+    },
+    {
+      "clause": "Section 6.1 - Data Breach",
+      "riskLevel": "Medium",
+      "action": "Reduce breach notification to 48 hours. Require provider to cover costs.",
+      "priority": "High",
+      "category": "Negotiation"
+    },
+    {
+      "clause": "Section 9.2 - Termination",
+      "riskLevel": "Low",
+      "action": "Add explicit data portability and deletion requirements upon termination.",
+      "priority": "Medium",
+      "category": "Legal Review"
+    },
+    {
+      "clause": "Section 10.1 - Force Majeure",
+      "riskLevel": "Medium",
+      "action": "Reduce force majeure period to 60 days with auto-termination right.",
+      "priority": "Medium",
+      "category": "Negotiation"
+    },
+    {
+      "clause": "Section 4.1 - Uptime SLA",
+      "riskLevel": "Medium",
+      "action": "Negotiate 99.95% uptime for critical services with escalating credits.",
+      "priority": "High",
+      "category": "Negotiation"
+    },
+    {
+      "clause": "Section 7.1 - IP Rights",
+      "riskLevel": "Medium",
+      "action": "Negotiate license-back provision for improvements from client data.",
+      "priority": "Medium",
+      "category": "Legal Review"
+    },
+    {
+      "clause": "Section 9.2 - Data Return",
+      "riskLevel": "Low",
+      "action": "Add 90-day post-termination data access with certified deletion.",
+      "priority": "Medium",
+      "category": "Compliance"
+    }
   ],
-  pipelineStages: [
-    {name:"Extract Chunks",icon:"📄",status:"complete",duration:"12.3s"},
-    {name:"Embed & Store",icon:"🔢",status:"complete",duration:"8.7s"},
-    {name:"Key Clauses",icon:"📋",status:"complete",duration:"15.1s"},
-    {name:"Risk Assessment",icon:"⚠️",status:"complete",duration:"18.4s"},
-    {name:"Actions",icon:"✅",status:"complete",duration:"11.2s"}
+  "pipelineStages": [
+    {
+      "name": "Extract Chunks",
+      "icon": "📄",
+      "status": "complete",
+      "duration": "12.3s"
+    },
+    {
+      "name": "Embed & Store",
+      "icon": "🔢",
+      "status": "complete",
+      "duration": "8.7s"
+    },
+    {
+      "name": "Key Clauses",
+      "icon": "📋",
+      "status": "complete",
+      "duration": "15.1s"
+    },
+    {
+      "name": "Risk Assessment",
+      "icon": "⚠️",
+      "status": "complete",
+      "duration": "18.4s"
+    },
+    {
+      "name": "Actions",
+      "icon": "✅",
+      "status": "complete",
+      "duration": "11.2s"
+    }
   ],
-  timeline: [
-    {date:"2025-01-15",event:"Contract Effective",type:"milestone"},
-    {date:"2025-07-15",event:"Mid-term Review",type:"review"},
-    {date:"2026-01-15",event:"Annual Renewal",type:"deadline"},
-    {date:"2026-12-15",event:"Termination Notice",type:"deadline"},
-    {date:"2027-01-14",event:"Expiration",type:"milestone"}
+  "timeline": [
+    {
+      "date": "2025-01-15",
+      "event": "Contract Effective",
+      "type": "milestone"
+    },
+    {
+      "date": "2025-07-15",
+      "event": "Mid-term Review",
+      "type": "review"
+    },
+    {
+      "date": "2026-01-15",
+      "event": "Annual Renewal",
+      "type": "deadline"
+    },
+    {
+      "date": "2026-12-15",
+      "event": "Termination Notice",
+      "type": "deadline"
+    },
+    {
+      "date": "2027-01-14",
+      "event": "Expiration",
+      "type": "milestone"
+    }
   ],
-  overallRiskScore: 6.4
-};
+  "overallRiskScore": 6.4
+}
+</script>
+<script>
+const CONTRACT_DATA = JSON.parse(document.getElementById('contract-data').textContent);
 
 const COLORS = {High:'#ef4444',Medium:'#f59e0b',Low:'#22c55e'};
 const PRIORITY_ORDER = {Urgent:0,High:1,Medium:2,Low:3};
@@ -886,6 +1204,13 @@ function esc(str) {
 }
 
 function getRiskColor(level) { return COLORS[level] || '#94a3b8'; }
+
+// Announce dynamic changes (filtering/search results) to screen readers via the
+// polite aria-live region (WCAG 4.1.3 Status Messages).
+function announce(msg) {
+  const live = document.getElementById('liveRegion');
+  if (live) live.textContent = msg;
+}
 
 // Risk-type axis labels: derive from the data actually present so charts don't
 // go blank when the LLM emits categories other than the original five. Falls
@@ -926,6 +1251,7 @@ function toggleTheme() {
   renderDonut();
   renderBarChart();
   renderComparison();
+  renderA11y();
 }
 
 function renderStats() {
@@ -1013,17 +1339,18 @@ function renderHeatmap() {
   const matrix = {};
   levels.forEach(l => { matrix[l] = {}; likelihoods.forEach(k => matrix[l][k] = []); });
   risks.forEach(r => { if(matrix[r.riskLevel] && matrix[r.riskLevel][r.likelihood]) matrix[r.riskLevel][r.likelihood].push(r); });
-  let html = '<table class="heatmap-table"><thead><tr><th style="color:var(--text-secondary);font-size:0.75rem"></th>';
-  likelihoods.forEach(l => html += '<th style="color:var(--text-secondary);font-size:0.75rem;text-align:center">'+l+'</th>');
+  let html = '<table class="heatmap-table"><caption class="visually-hidden">Risk matrix: number of risks by risk level (rows) and likelihood (columns)</caption><thead><tr><th scope="col" style="color:var(--text-secondary);font-size:0.75rem"><span class="visually-hidden">Risk level</span></th>';
+  likelihoods.forEach(l => html += '<th scope="col" style="color:var(--text-secondary);font-size:0.75rem;text-align:center">'+l+'</th>');
   html += '</tr></thead><tbody>';
   levels.forEach(level => {
-    html += '<tr><td style="color:var(--text-secondary);font-size:0.75rem;font-weight:600;padding-right:0.5rem">'+level+'</td>';
+    html += '<tr><th scope="row" style="color:var(--text-secondary);font-size:0.75rem;font-weight:600;padding-right:0.5rem;text-align:right">'+level+'</th>';
     likelihoods.forEach(lk => {
       const count = matrix[level][lk].length;
       const intensity = Math.min(count / 3, 1);
       const h = 120 - intensity * 120;
       const bg = count === 0 ? 'var(--bg-card-hover)' : 'hsla('+h+',70%,45%,'+(.3+intensity*.5)+')';
-      html += '<td class="heatmap-cell" style="background:'+bg+'" onclick="filterByHeatmap(\''+level+'\',\''+lk+'\')" title="'+level+' risk, '+lk+': '+count+' items">'+count+'</td>';
+      const lbl = level+' risk, '+lk+' likelihood: '+count+' item'+(count===1?'':'s')+'. Activate to filter clauses.';
+      html += '<td class="heatmap-td"><button type="button" class="heatmap-cell" style="background:'+bg+'" data-level="'+level+'" data-likelihood="'+lk+'" title="'+level+' risk, '+lk+': '+count+' items" aria-label="'+lbl+'">'+count+'</button></td>';
     });
     html += '</tr>';
   });
@@ -1074,7 +1401,7 @@ function renderPipeline() {
   const stages = CONTRACT_DATA.pipelineStages;
   let html = '';
   stages.forEach((s, i) => {
-    html += '<div class="pipeline-node"><span style="font-size:1.5rem">'+s.icon+'</span><span style="font-size:0.8rem;font-weight:600;margin-top:0.3rem">'+s.name+'</span><span style="font-size:0.7rem;color:var(--text-secondary)">'+s.duration+'</span><span style="color:var(--risk-low);font-size:0.75rem">✓ Complete</span></div>';
+    html += '<div class="pipeline-node"><span style="font-size:1.5rem" aria-hidden="true">'+s.icon+'</span><span style="font-size:0.8rem;font-weight:600;margin-top:0.3rem">'+s.name+'</span><span style="font-size:0.7rem;color:var(--text-secondary)">'+s.duration+'</span><span style="color:var(--risk-low-text);font-size:0.75rem">✓ Complete</span></div>';
     if (i < stages.length - 1) html += '<div class="pipeline-connector"></div>';
   });
   document.getElementById('pipelineFlow').innerHTML = html;
@@ -1147,16 +1474,21 @@ function renderClauseCards() {
   const html = CONTRACT_DATA.keyClauses.map(c => {
     const color = getRiskColor(c.riskImpact);
     const badgeClass = 'badge-' + c.riskImpact.toLowerCase();
-    return '<div class="clause-card" data-risk="'+esc(c.riskImpact)+'" style="border-left-color:'+color+'" onclick="this.classList.toggle(\'expanded\')"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem"><span class="badge" style="background:'+color+'22;color:'+color+'">'+esc(c.clauseType)+'</span><span class="badge '+badgeClass+'">'+esc(c.riskImpact)+'</span></div><div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.4rem">'+esc(c.section)+'</div><div class="clause-text">'+esc(c.extractedClause)+'</div><div style="margin-top:0.5rem;font-size:0.85rem;font-style:italic;color:var(--text-secondary)">'+esc(c.summary)+'</div><div style="margin-top:0.4rem;font-size:0.7rem;color:var(--accent)">Click to expand</div></div>';
+    const aria = esc(c.clauseType + ' clause' + (c.section ? ', ' + c.section : '') + ', ' + c.riskImpact + ' risk impact. Activate to expand details.');
+    const riskTextVar = 'var(--risk-' + c.riskImpact.toLowerCase() + '-text)';
+    return '<div class="clause-card" role="button" tabindex="0" aria-expanded="false" aria-label="'+aria+'" data-risk="'+esc(c.riskImpact)+'" style="border-left-color:'+color+'"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem"><span class="badge" style="background:'+color+'22;color:'+riskTextVar+'">'+esc(c.clauseType)+'</span><span class="badge '+badgeClass+'">'+esc(c.riskImpact)+'</span></div><div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.4rem">'+esc(c.section)+'</div><div class="clause-text">'+esc(c.extractedClause)+'</div><div style="margin-top:0.5rem;font-size:0.85rem;font-style:italic;color:var(--text-secondary)">'+esc(c.summary)+'</div><div style="margin-top:0.4rem;font-size:0.7rem;color:var(--accent-text)">Activate to expand</div></div>';
   }).join('');
   document.getElementById('clauseCards').innerHTML = html;
 }
 
-function filterCards(level) {
+function filterCards(level, btn) {
   document.getElementById('searchInput').value = '';
   document.getElementById('noResults').style.display = 'none';
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    const active = b === btn;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
   let visible = 0;
   document.querySelectorAll('.clause-card').forEach(card => {
     const show = level === 'all' || card.dataset.risk === level;
@@ -1166,6 +1498,8 @@ function filterCards(level) {
   document.querySelectorAll('#actionsBody tr').forEach(row => {
     row.style.display = (level === 'all' || row.dataset.risk === level) ? '' : 'none';
   });
+  announce(visible + ' clause' + (visible === 1 ? '' : 's') + ' shown'
+    + (level === 'all' ? '' : ' for ' + level + ' risk'));
 }
 
 function filterByHeatmap(riskLevel, likelihood) {
@@ -1180,7 +1514,8 @@ function filterByHeatmap(riskLevel, likelihood) {
       card.classList.add('hidden');
     }
   });
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.filter-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
+  announce(matching.length + ' risk' + (matching.length === 1 ? '' : 's') + ' at ' + riskLevel + ' risk, ' + likelihood + ' likelihood');
 }
 
 function renderTreemap() {
@@ -1208,7 +1543,7 @@ function renderTreemap() {
     const w = (it.count / topTotal) * W;
     const h = H * 0.55;
     const hue = 120 - (it.avgScore / 10) * 120;
-    html += '<div class="treemap-item" style="left:'+x+'px;top:0;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',65%,42%,0.85)" title="'+esc(it.name)+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+esc(it.name)+'</span><span style="font-size:0.75rem;opacity:0.8">'+it.count+' risks</span></div>';
+    html += '<div class="treemap-item" style="left:'+x+'px;top:0;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',60%,32%,0.95)" title="'+esc(it.name)+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+esc(it.name)+'</span><span style="font-size:0.75rem">'+it.count+' risks</span></div>';
     x += w;
   });
   x = 0;
@@ -1216,7 +1551,7 @@ function renderTreemap() {
     const w = (it.count / botTotal) * W;
     const h = H * 0.45;
     const hue = 120 - (it.avgScore / 10) * 120;
-    html += '<div class="treemap-item" style="left:'+x+'px;top:'+(H*0.55)+'px;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',65%,42%,0.85)" title="'+esc(it.name)+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+esc(it.name)+'</span><span style="font-size:0.75rem;opacity:0.8">'+it.count+' risks</span></div>';
+    html += '<div class="treemap-item" style="left:'+x+'px;top:'+(H*0.55)+'px;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',60%,32%,0.95)" title="'+esc(it.name)+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+esc(it.name)+'</span><span style="font-size:0.75rem">'+it.count+' risks</span></div>';
     x += w;
   });
   container.innerHTML = html;
@@ -1245,9 +1580,11 @@ function renderTimeline() {
     const pct = ((new Date(e.date).getTime() - min) / range) * 100;
     const isPast = new Date(e.date) < new Date();
     const color = e.type === 'milestone' ? 'var(--accent)' : e.type === 'deadline' ? 'var(--risk-medium)' : 'var(--risk-low)';
+    // Dim the marker dot for past events, but keep label text at full opacity so
+    // it stays readable (WCAG 1.4.3 contrast).
     const opacity = isPast ? '0.5' : '1';
     html += '<div class="timeline-marker" style="left:'+pct+'%;background:'+color+';opacity:'+opacity+'"></div>';
-    html += '<div class="timeline-label" style="left:'+pct+'%;opacity:'+opacity+'"><strong>'+e.event+'</strong><br>'+e.date+'</div>';
+    html += '<div class="timeline-label" style="left:'+pct+'%"><strong>'+e.event+'</strong><br>'+e.date+'</div>';
   });
   html += '</div>';
   document.getElementById('timelineContainer').innerHTML = html;
@@ -1257,7 +1594,7 @@ function renderActionsTable() {
   const html = CONTRACT_DATA.recommendedActions.map(a => {
     const pClass = a.priority === 'Urgent' ? 'priority-urgent' : a.priority === 'High' ? 'priority-high-p' : a.priority === 'Medium' ? 'priority-medium-p' : 'priority-low-p';
     const badgeClass = 'badge-' + a.riskLevel.toLowerCase();
-    return '<tr data-risk="'+esc(a.riskLevel)+'"><td><span class="priority-dot '+pClass+'"></span>'+esc(a.priority)+'</td><td>'+esc(a.clause)+'</td><td><span class="badge '+badgeClass+'">'+esc(a.riskLevel)+'</span></td><td>'+esc(a.action)+'</td><td><span class="badge" style="background:rgba(59,130,246,0.12);color:var(--accent)">'+esc(a.category)+'</span></td></tr>';
+    return '<tr data-risk="'+esc(a.riskLevel)+'"><td><span class="priority-dot '+pClass+'"></span>'+esc(a.priority)+'</td><td>'+esc(a.clause)+'</td><td><span class="badge '+badgeClass+'">'+esc(a.riskLevel)+'</span></td><td>'+esc(a.action)+'</td><td><span class="badge" style="background:rgba(59,130,246,0.12);color:var(--accent-text)">'+esc(a.category)+'</span></td></tr>';
   }).join('');
   document.getElementById('actionsBody').innerHTML = html;
 }
@@ -1309,8 +1646,11 @@ function renderComparison() {
 
 function searchAll(query) {
   const q = query.toLowerCase().trim();
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  if (!q) { document.querySelector('.filter-btn').classList.add('active'); }
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    const active = !q && b.dataset.filter === 'all';
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
   let visibleCards = 0;
   document.querySelectorAll('.clause-card').forEach(card => {
     const text = card.textContent.toLowerCase();
@@ -1323,6 +1663,7 @@ function searchAll(query) {
     const text = row.textContent.toLowerCase();
     row.style.display = (!q || text.includes(q)) ? '' : 'none';
   });
+  if (q) announce(visibleCards + ' clause' + (visibleCards === 1 ? '' : 's') + ' match "' + query + '"');
 }
 
 const tooltip = { el: null };
@@ -1375,6 +1716,81 @@ function bindTooltips() {
   });
 }
 
+// Give each canvas chart an accessible name (role=img + aria-label) and build
+// the visually-hidden data tables that are the real text alternative (WCAG 1.1.1).
+function renderA11y() {
+  const d = CONTRACT_DATA;
+  const setLabel = (id, label) => {
+    const c = document.getElementById(id);
+    if (c) { c.setAttribute('role', 'img'); c.setAttribute('aria-label', label); }
+  };
+  const clauseTypes = [...new Set(d.keyClauses.map(c => c.clauseType))];
+  const highCount = d.riskAssessment.filter(r => r.riskLevel === 'High').length;
+  const medCount = d.riskAssessment.filter(r => r.riskLevel === 'Medium').length;
+  const lowCount = d.riskAssessment.filter(r => r.riskLevel === 'Low').length;
+  setLabel('gaugeChart', 'Overall risk score gauge: ' + d.overallRiskScore + ' out of 10.');
+  setLabel('radarChart', 'Radar chart of maximum risk score by category.');
+  setLabel('donutChart', 'Doughnut chart of clause distribution across ' + clauseTypes.length + ' clause types.');
+  setLabel('barChart', 'Stacked bar chart of risk counts by category and level.');
+  setLabel('comparisonChart', 'Bar chart comparing risk counts by category and level.');
+
+  const types = [...new Set(d.riskAssessment.map(r => r.riskType))];
+  const rowsByType = types.map(t => {
+    const items = d.riskAssessment.filter(r => r.riskType === t);
+    const hi = items.filter(r => r.riskLevel === 'High').length;
+    const me = items.filter(r => r.riskLevel === 'Medium').length;
+    const lo = items.filter(r => r.riskLevel === 'Low').length;
+    return '<tr><th scope="row">' + esc(t) + '</th><td>' + hi + '</td><td>' + me + '</td><td>' + lo + '</td></tr>';
+  }).join('');
+  const clauseRows = clauseTypes.map(t =>
+    '<tr><th scope="row">' + esc(t) + '</th><td>' + d.keyClauses.filter(c => c.clauseType === t).length + '</td></tr>'
+  ).join('');
+  document.getElementById('a11ySummary').innerHTML =
+    '<h2>Chart data (text alternative)</h2>'
+    + '<p>Overall risk score: ' + d.overallRiskScore + ' out of 10. Risks by severity: '
+    + highCount + ' High, ' + medCount + ' Medium, ' + lowCount + ' Low.</p>'
+    + '<table><caption>Risk counts by category and level</caption><thead><tr>'
+    + '<th scope="col">Category</th><th scope="col">High</th><th scope="col">Medium</th><th scope="col">Low</th>'
+    + '</tr></thead><tbody>' + rowsByType + '</tbody></table>'
+    + '<table><caption>Clause distribution by type</caption><thead><tr>'
+    + '<th scope="col">Clause type</th><th scope="col">Count</th></tr></thead><tbody>'
+    + clauseRows + '</tbody></table>';
+}
+
+function toggleCard(card) {
+  const expanded = card.classList.toggle('expanded');
+  card.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+}
+
+// Wire up all interactive controls with addEventListener instead of inline
+// on* handlers, so the page can enforce a strict, hash-based CSP.
+function bindEvents() {
+  document.getElementById('exportBtn').addEventListener('click', () => window.print());
+  document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => filterCards(btn.dataset.filter, btn));
+  });
+  document.getElementById('searchInput').addEventListener('input', e => searchAll(e.target.value));
+  document.getElementById('tableFilter').addEventListener('change', e => filterTable(e.target.value));
+  document.querySelectorAll('.th-sort').forEach(btn => {
+    btn.addEventListener('click', () => sortTable(parseInt(btn.dataset.col, 10)));
+  });
+  const cards = document.getElementById('clauseCards');
+  cards.addEventListener('click', e => {
+    const card = e.target.closest('.clause-card');
+    if (card) toggleCard(card);
+  });
+  cards.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('.clause-card');
+    if (card) { e.preventDefault(); toggleCard(card); }
+  });
+  document.getElementById('heatmapContainer').addEventListener('click', e => {
+    const cell = e.target.closest('.heatmap-cell');
+    if (cell) filterByHeatmap(cell.dataset.level, cell.dataset.likelihood);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   renderStats();
   renderGauge();
@@ -1388,7 +1804,9 @@ document.addEventListener('DOMContentLoaded', function() {
   renderTimeline();
   renderActionsTable();
   renderComparison();
+  renderA11y();
   bindTooltips();
+  bindEvents();
 });
 </script>
 </body>

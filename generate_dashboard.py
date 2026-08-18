@@ -487,19 +487,23 @@ def generate_dashboard_html(state):
                  .replace('\u2028', '\\u2028')
                  .replace('\u2029', '\\u2029'))
 
-    # Replace the embedded CONTRACT_DATA in the template. Use a function as the
+    # Inject the data into the non-executable JSON data island
+    # (<script type="application/json" id="contract-data">). Keeping the data out
+    # of the executable <script> lets the page ship a strict, hash-based
+    # Content-Security-Policy (the code block stays byte-stable) and follows the
+    # OWASP-recommended "JSON in a data island" pattern. Use a function as the
     # replacement so backslashes / group references in contract text are inserted
     # literally (a plain string replacement would interpret '\\1', '\\g', etc.).
-    pattern = r'const CONTRACT_DATA = \{.*?\n\};'
+    pattern = r'(<script type="application/json" id="contract-data">\n).*?(\n</script>)'
     result, n = re.subn(
         pattern,
-        lambda _m: f'const CONTRACT_DATA = {data_json};',
+        lambda m: f'{m.group(1)}{data_json}{m.group(2)}',
         template,
         flags=re.DOTALL,
     )
     if n != 1:
         raise ValueError(
-            f"Expected exactly one CONTRACT_DATA block in the template, found {n}. "
+            f"Expected exactly one contract-data island in the template, found {n}. "
             "The template may have changed; the dashboard cannot be generated safely."
         )
 
