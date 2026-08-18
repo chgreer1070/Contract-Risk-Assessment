@@ -1,0 +1,34 @@
+# Tooling configuration for the CPU development/test loop: lint, type-check,
+# tests, and coverage. Runtime / model dependencies stay in requirements.txt
+# (GPU/Colab stack); developer tools are pinned in requirements-dev.txt.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# The Jupyter notebooks target a GPU/Colab runtime and are out of scope for the
+# CPU lint/test loop.
+extend-exclude = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# The HTML/JS-generation code intentionally builds long inline strings.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests adjust sys.path before importing the module under test.
+"tests/*" = ["E402"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_redundant_casts = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["generate_dashboard"]
+
+[tool.coverage.report]
+show_missing = true

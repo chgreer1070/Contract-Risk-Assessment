@@ -20,7 +20,7 @@ Usage:
 
 import json
 import re
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 
 # --- Tolerant parsing helpers -------------------------------------------------
 # Real Mixtral/Mistral output deviates from the prompt's bullet+**bold** template:
@@ -491,7 +491,7 @@ def generate_dashboard_html(state):
     import os
     template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                   'contract_visualization.html')
-    with open(template_path, 'r') as f:
+    with open(template_path) as f:
         template = f.read()
 
     # Build the data object matching CONTRACT_DATA structure

@@ -19,18 +19,17 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from generate_dashboard import (  # noqa: E402
-    parse_key_clauses,
-    parse_risk_assessment,
-    parse_recommended_actions,
-    compute_risk_score,
-    generate_dashboard_html,
-    _canon_level,
-    _canon_likelihood,
     _build_metadata,
     _build_timeline,
+    _canon_level,
+    _canon_likelihood,
     _parse_date,
+    compute_risk_score,
+    generate_dashboard_html,
+    parse_key_clauses,
+    parse_recommended_actions,
+    parse_risk_assessment,
 )
-
 
 # --------------------------------------------------------------------------- #
 # parse_key_clauses

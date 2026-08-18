@@ -23,8 +23,8 @@ from generate_dashboard import (  # noqa: E402
     _score_for,
     compute_risk_score,
     compute_weighted_risk_score,
-    top_risks,
     generate_dashboard_html,
+    top_risks,
 )
 
 

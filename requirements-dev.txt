@@ -1,0 +1,6 @@
+# Developer tooling for the CPU lint/type/test loop (see pyproject.toml for
+# configuration). Runtime/model dependencies live in requirements.txt.
+pytest
+pytest-cov
+ruff
+mypy

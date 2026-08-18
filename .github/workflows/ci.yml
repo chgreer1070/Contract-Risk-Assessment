@@ -7,18 +7,44 @@ on:
   workflow_dispatch:
 
 jobs:
-  python-tests:
-    name: Python parser tests
+  lint:
+    name: Ruff lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install pytest
-        run: pip install pytest
-      - name: Run tests
-        run: pytest -q
+      - name: Install dev tools
+        run: pip install -r requirements-dev.txt
+      - name: Ruff
+        run: ruff check .
+
+  typecheck:
+    name: Mypy type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dev tools
+        run: pip install -r requirements-dev.txt
+      - name: Mypy
+        run: mypy generate_dashboard.py
+
+  python-tests:
+    name: Python tests + coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dev tools
+        run: pip install -r requirements-dev.txt
+      - name: Run tests with coverage gate
+        run: pytest --cov=generate_dashboard --cov-report=term-missing --cov-fail-under=90
 
   dashboard-smoke:
     name: Dashboard render smoke test
@@ -29,8 +55,23 @@ jobs:
         with:
           node-version: "20"
       - name: Install JS deps
-        run: npm install playwright chart.js
+        run: npm install
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Render & validate dashboard
         run: node .claude/skills/run-contract-risk-assessment/smoke.mjs
+
+  accessibility:
+    name: Accessibility (axe-core) scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install JS deps
+        run: npm install
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: axe-core WCAG scan
+        run: node .claude/skills/run-contract-risk-assessment/a11y.mjs
