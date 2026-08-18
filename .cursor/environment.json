@@ -1,0 +1,4 @@
+{
+  "name": "Contract Risk Assessment",
+  "install": "bash .cursor/install.sh"
+}
