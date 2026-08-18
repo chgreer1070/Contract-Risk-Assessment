@@ -28,15 +28,20 @@ from datetime import timedelta, datetime
 # helpers extract fields tolerantly so a single format slip doesn't collapse the
 # whole parse into one fallback blob.
 
+# Field label/value separator. Accepts a colon or any dash the LLM might use,
+# including the en dash (U+2013) and em dash (U+2014) it often substitutes.
+_SEP = r'[:\-\u2013\u2014]'
+
+
 def _split_blocks(text, anchor_label):
     """Split text before each occurrence of an anchor field label.
 
     Tolerates an optional leading bullet ('-'/'*'), numbered prefix ('1.'/'2)'),
-    and optional '**bold**' around the label, followed by ':' or '-'.
+    and optional '**bold**' around the label, followed by ':' or a dash.
     """
     lab = anchor_label.replace(' ', r'\s+')
     return re.split(
-        r'\n(?=\s*(?:[-*]|\d+[.)])?\s*(?:\*\*)?\s*' + lab + r'\s*(?:\*\*)?\s*[:\-])',
+        r'\n(?=\s*(?:[-*]|\d+[.)])?\s*(?:\*\*)?\s*' + lab + r'\s*(?:\*\*)?\s*' + _SEP + r')',
         text,
     )
 
@@ -58,10 +63,10 @@ def _field(label, block, multiline=False):
     until the next recognized field label (or end of block).
     """
     lab = label.replace(' ', r'\s+')
-    head = r'(?:[-*]|\d+[.)])?\s*(?:\*\*)?\s*' + lab + r'\s*(?:\*\*)?\s*[:\-]\s*\[?'
+    head = r'(?:[-*]|\d+[.)])?\s*(?:\*\*)?\s*' + lab + r'\s*(?:\*\*)?\s*' + _SEP + r'\s*\[?'
     if multiline:
         stops = '|'.join(
-            r'(?:[-*]|\d+[.)])?\s*(?:\*\*)?\s*' + s.replace(' ', r'\s+') + r'\s*(?:\*\*)?\s*[:\-]'
+            r'(?:[-*]|\d+[.)])?\s*(?:\*\*)?\s*' + s.replace(' ', r'\s+') + r'\s*(?:\*\*)?\s*' + _SEP
             for s in _STOP_LABELS
         )
         m = re.search(head + r'(.*?)(?=\n\s*(?:' + stops + r')|\Z)', block, re.S)
@@ -72,18 +77,39 @@ def _field(label, block, multiline=False):
     return m.group(1).strip().strip('[]').rstrip('-* \n').strip()
 
 
+# Synonym vocabularies for canonicalizing free-text risk levels / likelihoods.
+# Real LLM output phrases these many ways; matching on whole words (see
+# _has_word) avoids substring traps like 'insignificant' containing
+# 'significant', or 'improbable' containing 'probable'.
+_LEVEL_HIGH = ('critical', 'severe', 'very high', 'high', 'extreme',
+               'significant', 'substantial', 'major', 'serious', 'grave', 'elevated')
+_LEVEL_LOW = ('very low', 'low', 'minor', 'negligible', 'minimal', 'immaterial',
+              'trivial', 'nominal', 'insignificant', 'slight')
+_LEVEL_MEDIUM = ('medium', 'moderate', 'average', 'intermediate')
+
+_LIKE_UNLIKELY = ('unlikely', 'rare', 'improbable', 'seldom', 'remote', 'doubtful')
+_LIKE_LIKELY = ('likely', 'probable', 'certain', 'frequent', 'expected',
+                'anticipated', 'foreseeable', 'foreseen', 'often')
+_LIKE_POSSIBLE = ('possible', 'occasional', 'conceivable', 'sometimes')
+
+
+def _has_word(text, words):
+    """True if any of ``words`` appears as a whole word in ``text``."""
+    return any(re.search(r'\b' + re.escape(w) + r'\b', text) for w in words)
+
+
 def _canon_level(value, default='Medium'):
     """Normalize a risk level / impact to one of High / Medium / Low."""
     if not value:
         return default
     s = value.lower()
-    if any(w in s for w in ('critical', 'severe', 'very high', 'extreme')):
-        return 'High'
-    if 'high' in s:
-        return 'High'
-    if any(w in s for w in ('low', 'minor', 'negligible', 'minimal')):
+    # Low first so negations like 'insignificant' or 'very low' win over the
+    # High/Medium tokens they contain.
+    if _has_word(s, _LEVEL_LOW):
         return 'Low'
-    if any(w in s for w in ('medium', 'moderate')):
+    if _has_word(s, _LEVEL_HIGH):
+        return 'High'
+    if _has_word(s, _LEVEL_MEDIUM):
         return 'Medium'
     return default
 
@@ -94,11 +120,11 @@ def _canon_likelihood(value, default='Possible'):
         return default
     s = value.lower()
     # 'unlikely' contains 'likely' — check the negatives first.
-    if any(w in s for w in ('unlikely', 'rare', 'improbable', 'seldom')):
+    if _has_word(s, _LIKE_UNLIKELY):
         return 'Unlikely'
-    if any(w in s for w in ('likely', 'probable', 'certain', 'frequent', 'expected')):
+    if _has_word(s, _LIKE_LIKELY):
         return 'Likely'
-    if any(w in s for w in ('possible', 'occasional')):
+    if _has_word(s, _LIKE_POSSIBLE):
         return 'Possible'
     return default
 
@@ -164,8 +190,15 @@ def parse_key_clauses(raw_markdown):
         clause['summary'] = _field('Summary', block, multiline=True) or ''
 
         # Pull a section/article identifier from the clause text if present.
-        # Require a leading digit so the field label "Clause Type" isn't matched.
-        sec = re.search(r'\b(?:Section|Article|Clause)\s+\d[\dA-Za-z.]*', block)
+        # Require a leading digit so field labels like "Clause Type" aren't
+        # matched. Recognizes '§ 8.1', abbreviations ('Sec.', 'Art.'), and
+        # schedule/exhibit/appendix references in addition to the long forms.
+        sec = re.search(
+            r'(?:§\s*\d[\dA-Za-z.]*'
+            r'|\b(?:Sections?|Secs?\.?|Articles?|Arts?\.?|Clauses?'
+            r'|Schedules?|Exhibits?|Appendix|Appendices)\s+\d[\dA-Za-z.]*)',
+            block,
+        )
         if sec:
             clause['section'] = sec.group(0).rstrip('.')
 
@@ -333,6 +366,27 @@ def _structured_list(state, *keys):
     return None
 
 
+def _norm_key(*parts):
+    """Whitespace-collapsed, lowercased join used to detect duplicate entries."""
+    return '\u0001'.join(
+        re.sub(r'\s+', ' ', str(p if p is not None else '')).strip().lower()
+        for p in parts
+    )
+
+
+def _dedupe(items, keyfn):
+    """Drop later items whose key repeats an earlier one, preserving order."""
+    seen = set()
+    out = []
+    for it in items:
+        k = keyfn(it)
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(it)
+    return out
+
+
 def compute_risk_score(risks):
     """Compute overall 0-10 risk score from parsed risks."""
     if not risks:
@@ -437,6 +491,15 @@ def generate_dashboard_html(state):
 
     ac = _structured_list(state, 'recommended_actions_data', 'actions')
     actions = _actions_from_data(ac) if ac else parse_recommended_actions(state.get('recommended_actions', ''))
+
+    # Collapse duplicate entries the LLM sometimes repeats (same clause/risk/
+    # action emitted twice), then renumber clause ids so they stay sequential
+    # after any removals. Dedupe before scoring so repeats don't skew the mean.
+    clauses = _dedupe(clauses, lambda c: _norm_key(c['clauseType'], c['extractedClause'], c['summary']))
+    for i, c in enumerate(clauses, 1):
+        c['id'] = f'KC-{i:03d}'
+    risks = _dedupe(risks, lambda r: _norm_key(r['riskType'], r['clauseReference'], r['potentialConsequence']))
+    actions = _dedupe(actions, lambda a: _norm_key(a['clause'], a['action']))
 
     overall_score = compute_risk_score(risks)
     metadata = _build_metadata(state)
