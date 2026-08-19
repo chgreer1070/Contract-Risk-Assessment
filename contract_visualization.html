@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'sha384-+KfTJy8hqeNb6FpTUfKAOeXQxmaYpaNzykK1/F8HxGOkV9som5WYh0uXuILuDOkA'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'sha384-X954jm/20kQvceRuibK8NQgIgDvWp6c0qSJX+Yp4qbN+TDm9J5vLaQ3p55BH4Aq4'">
     <title>Contract Risk Assessment Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
@@ -765,6 +765,13 @@
         .risk-citation { margin-top: 0.4rem; font-size: 0.78rem; color: var(--text-secondary); border-left: 2px solid var(--border-color); padding-left: 0.5rem; }
         .risk-citation.verified { border-left-color: var(--risk-low); }
         .risk-citation q { color: var(--text-primary); }
+        /* Full "All Identified Risks" table */
+        .risk-table-section { grid-column: 1 / -1; }
+        #riskTable td { vertical-align: top; }
+        #riskTable td:nth-child(7) { min-width: 220px; }
+        .risk-src-verified { color: var(--risk-low-text); font-weight: 600; }
+        .risk-src-none { color: var(--text-secondary); font-style: italic; }
+        .risk-src-quote { color: var(--text-secondary); }
     </style>
 </head>
 <body>
@@ -873,6 +880,37 @@
           </tr>
         </thead>
         <tbody id="actionsBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- All Identified Risks (full table: score, band, reasoning, verified source) -->
+  <section class="card risk-table-section">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
+      <h2 class="section-title" id="riskTableHeading" style="margin-bottom:0;font-size:1.1rem;font-weight:600;">All Identified Risks</h2>
+      <select id="riskTableFilter" aria-label="Filter risks by risk level" style="padding:0.4rem 0.8rem;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-primary);font-size:0.85rem;">
+        <option value="all">All Risk Levels</option>
+        <option value="High">High</option>
+        <option value="Medium">Medium</option>
+        <option value="Low">Low</option>
+      </select>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="actions-table" id="riskTable">
+        <caption class="visually-hidden">All identified contract risks with score, risk level, likelihood, action band, reasoning, and verified source.</caption>
+        <thead>
+          <tr>
+            <th scope="col" aria-sort="none"><button type="button" class="th-sort risk-th-sort" data-col="0" data-type="num" aria-label="Sort by score">Score ↕</button></th>
+            <th scope="col" aria-sort="none"><button type="button" class="th-sort risk-th-sort" data-col="1" data-type="text" aria-label="Sort by risk type">Type ↕</button></th>
+            <th scope="col" aria-sort="none"><button type="button" class="th-sort risk-th-sort" data-col="2" data-type="text" aria-label="Sort by clause">Clause ↕</button></th>
+            <th scope="col" aria-sort="none"><button type="button" class="th-sort risk-th-sort" data-col="3" data-type="rank" aria-label="Sort by risk level">Risk Level ↕</button></th>
+            <th scope="col" aria-sort="none"><button type="button" class="th-sort risk-th-sort" data-col="4" data-type="rank" aria-label="Sort by likelihood">Likelihood ↕</button></th>
+            <th scope="col" aria-sort="none"><button type="button" class="th-sort risk-th-sort" data-col="5" data-type="rank" aria-label="Sort by action band">Band ↕</button></th>
+            <th scope="col">Why</th>
+            <th scope="col">Source</th>
+          </tr>
+        </thead>
+        <tbody id="riskTableBody"></tbody>
       </table>
     </div>
   </section>
@@ -1473,6 +1511,13 @@ function esc(str) {
   return d.innerHTML;
 }
 
+// Escape for use inside a double-quoted HTML attribute. esc() handles &, <, >
+// but NOT quotes, so attribute values built from contract text also need the
+// quote characters neutralized to prevent attribute breakout.
+function escAttr(str) {
+  return esc(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function getRiskColor(level) { return COLORS[level] || '#94a3b8'; }
 
 // Announce dynamic changes (filtering/search results) to screen readers via the
@@ -1911,6 +1956,89 @@ function filterTable(level) {
   });
 }
 
+// --- Full "All Identified Risks" table -------------------------------------
+const RISK_LEVEL_RANK = { High: 3, Medium: 2, Low: 1 };
+const LIKELIHOOD_RANK = { Likely: 3, Possible: 2, Unlikely: 1 };
+const RISK_BAND_RANK = { Walk: 4, Escalate: 3, Negotiate: 2, Accept: 1 };
+
+function renderRiskTable() {
+  const risks = CONTRACT_DATA.riskAssessment || [];
+  const tbody = document.getElementById('riskTableBody');
+  if (!tbody) return;
+  if (!risks.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);font-style:italic;padding:1.5rem">No risks identified.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = risks.map(r => {
+    const level = r.riskLevel || '';
+    const like = r.likelihood || '';
+    const band = r.band || '';
+    const score = (typeof r.score === 'number') ? r.score : 0;
+    const badgeClass = 'badge-' + level.toLowerCase();
+    const cite = r.citations && r.citations[0];
+    let srcCell;
+    if (cite && cite.verified) {
+      const q = String(cite.quote || '');
+      const short = q.length > 120 ? q.slice(0, 120) + '\u2026' : q;
+      srcCell = '<span class="risk-src-verified">Verified</span> <span class="risk-src-quote" title="' + escAttr(q) + '"><q>' + esc(short) + '</q></span>';
+    } else if (cite) {
+      srcCell = '<span class="risk-src-none">Unverified</span>';
+    } else {
+      srcCell = '<span class="risk-src-none">No source</span>';
+    }
+    const bandCell = band ? '<span class="risk-band">' + esc(band) + '</span>' : '';
+    return '<tr data-risk="' + escAttr(level) + '">'
+      + '<td data-sort="' + score + '">' + esc(String(score)) + '/10</td>'
+      + '<td>' + esc(r.riskType || '') + '</td>'
+      + '<td>' + esc(r.clauseReference || '') + '</td>'
+      + '<td data-sort="' + (RISK_LEVEL_RANK[level] || 0) + '"><span class="badge ' + badgeClass + '">' + esc(level) + '</span></td>'
+      + '<td data-sort="' + (LIKELIHOOD_RANK[like] || 0) + '">' + esc(like) + '</td>'
+      + '<td data-sort="' + (RISK_BAND_RANK[band] || 0) + '">' + bandCell + '</td>'
+      + '<td>' + esc(r.rationale || '') + '</td>'
+      + '<td>' + srcCell + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function sortRiskTable(colIdx, type) {
+  const tbody = document.getElementById('riskTableBody');
+  if (!tbody) return;
+  // Ignore the single-cell empty-state placeholder row.
+  const rows = Array.from(tbody.rows).filter(row => row.cells.length > 1);
+  if (!rows.length) return;
+  const samecol = String(tbody.dataset.sortCol) === String(colIdx);
+  let dir;
+  if (samecol) {
+    dir = tbody.dataset.sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    dir = (type === 'num' || type === 'rank') ? 'desc' : 'asc';  // worst-first default for numbers
+  }
+  rows.sort((a, b) => {
+    let cmp;
+    if (type === 'num' || type === 'rank') {
+      cmp = parseFloat(a.cells[colIdx].dataset.sort || '0') - parseFloat(b.cells[colIdx].dataset.sort || '0');
+    } else {
+      cmp = a.cells[colIdx].textContent.trim().localeCompare(b.cells[colIdx].textContent.trim());
+    }
+    return dir === 'asc' ? cmp : -cmp;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+  tbody.dataset.sortCol = colIdx;
+  tbody.dataset.sortDir = dir;
+  document.querySelectorAll('#riskTable thead th').forEach(th => th.setAttribute('aria-sort', 'none'));
+  const active = document.querySelector('#riskTable thead th button[data-col="' + colIdx + '"]');
+  if (active && active.parentElement) {
+    active.parentElement.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : 'descending');
+  }
+}
+
+function filterRiskTable(level) {
+  document.querySelectorAll('#riskTableBody tr').forEach(row => {
+    if (row.cells.length === 1) return;  // keep the empty-state row visible
+    row.style.display = (level === 'all' || row.dataset.risk === level) ? '' : 'none';
+  });
+}
+
 function renderComparison() {
   const ctx = document.getElementById('comparisonChart').getContext('2d');
   const types = riskTypes();
@@ -2095,9 +2223,16 @@ function bindEvents() {
   });
   document.getElementById('searchInput').addEventListener('input', e => searchAll(e.target.value));
   document.getElementById('tableFilter').addEventListener('change', e => filterTable(e.target.value));
-  document.querySelectorAll('.th-sort').forEach(btn => {
+  // Scope the actions-table sorter to its own table so it does not also fire on
+  // the risk table's headers (which share the .th-sort style class).
+  document.querySelectorAll('#actionsTable .th-sort').forEach(btn => {
     btn.addEventListener('click', () => sortTable(parseInt(btn.dataset.col, 10)));
   });
+  document.querySelectorAll('.risk-th-sort').forEach(btn => {
+    btn.addEventListener('click', () => sortRiskTable(parseInt(btn.dataset.col, 10), btn.dataset.type));
+  });
+  const riskFilter = document.getElementById('riskTableFilter');
+  if (riskFilter) riskFilter.addEventListener('change', e => filterRiskTable(e.target.value));
   const cards = document.getElementById('clauseCards');
   cards.addEventListener('click', e => {
     const card = e.target.closest('.clause-card');
@@ -2127,6 +2262,7 @@ document.addEventListener('DOMContentLoaded', function() {
   renderTreemap();
   renderTimeline();
   renderActionsTable();
+  renderRiskTable();
   renderComparison();
   renderA11y();
   bindTooltips();
