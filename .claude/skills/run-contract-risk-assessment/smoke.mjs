@@ -141,6 +141,27 @@ async function main() {
   await page.screenshot({ path: `${SHOTS_DIR}/dashboard-filtered.png`, fullPage: true });
   console.log(`Screenshot: ${SHOTS_DIR}/dashboard-filtered.png`);
 
+  // Full "All Identified Risks" table: row count, score sort, level filter
+  const riskCount = await page.evaluate(() => (CONTRACT_DATA.riskAssessment || []).length);
+  const riskRows = await page.$$eval('#riskTableBody tr', rows => rows.filter(r => r.cells.length > 1).length);
+  console.log(`Risk table rows: ${riskRows} (expected ${riskCount})`);
+  await page.click('#riskTable th button[data-col="0"]'); // sort by score, desc first
+  await page.waitForTimeout(200);
+  const scores = await page.$$eval('#riskTableBody tr', rows =>
+    rows.filter(r => r.cells.length > 1).map(r => parseFloat(r.cells[0].dataset.sort || '0')));
+  const sortedDesc = scores.length > 1 && scores[0] === Math.max(...scores);
+  console.log(`Risk table score sort (desc): ${sortedDesc ? 'PASS' : 'FAIL'} (first=${scores[0]})`);
+  await page.selectOption('#riskTableFilter', 'High');
+  await page.waitForTimeout(200);
+  const visibleRisk = await page.$$eval('#riskTableBody tr', rows =>
+    rows.filter(r => r.cells.length > 1 && r.style.display !== 'none').length);
+  const highRisk = await page.evaluate(() =>
+    CONTRACT_DATA.riskAssessment.filter(r => r.riskLevel === 'High').length);
+  console.log(`Risk table High filter: ${visibleRisk} visible (expected ${highRisk})`);
+  await page.selectOption('#riskTableFilter', 'all');
+  const riskTableOk = riskRows === riskCount && riskRows > 0 && sortedDesc && visibleRisk === highRisk;
+  console.log(`Risk table checks: ${riskTableOk ? 'PASS' : 'FAIL'}`);
+
   // Check for console errors
   const errors = [];
   page.on('pageerror', err => errors.push(err.message));
@@ -154,7 +175,7 @@ async function main() {
   server.close();
 
   // Summary
-  const allGood = stats.length === 6 && clauses.length === 8 && canvases.length === 5 && pipelineNodes.length === 5;
+  const allGood = stats.length === 6 && clauses.length === 8 && canvases.length === 5 && pipelineNodes.length === 5 && riskTableOk;
   console.log(`\n${allGood ? 'ALL CHECKS PASSED' : 'SOME CHECKS FAILED'}`);
   process.exit(allGood ? 0 : 1);
 }

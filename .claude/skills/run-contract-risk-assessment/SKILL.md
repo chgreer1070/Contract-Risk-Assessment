@@ -44,6 +44,10 @@ Theme toggle: now light
 Screenshot: /tmp/shots/dashboard-light.png
 High Risk filter: 3 cards visible
 Screenshot: /tmp/shots/dashboard-filtered.png
+Risk table rows: 12 (expected 12)
+Risk table score sort (desc): PASS (first=9)
+Risk table High filter: 4 visible (expected 4)
+Risk table checks: PASS
 Console errors: none
 
 ALL CHECKS PASSED
