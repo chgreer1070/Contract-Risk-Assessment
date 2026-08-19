@@ -1,0 +1,24 @@
+{
+  "name": "structured_basic",
+  "state": {
+    "contract_type": "default",
+    "key_clauses_data": [
+      {"clauseType": "Liability", "section": "Section 8.1", "extractedClause": "Provider's total aggregate liability shall not exceed the fees paid.", "summary": "Caps liability."},
+      {"clauseType": "Data Protection", "section": "Section 6.1", "extractedClause": "Provider shall notify Client of any data breach within 72 hours.", "summary": "Breach notice."}
+    ],
+    "risk_assessment_data": [
+      {"riskType": "Legal", "clauseReference": "Section 8.1 - Liability Cap", "riskLevel": "High", "likelihood": "Likely", "potentialConsequence": "Unrecoverable losses."},
+      {"riskType": "Compliance", "clauseReference": "Section 6.1 - Data Protection", "riskLevel": "Medium", "likelihood": "Possible", "potentialConsequence": "Regulatory fines."}
+    ],
+    "recommended_actions": ""
+  },
+  "expect": {
+    "clauseCount": 2,
+    "weightedRiskScore": 7.4,
+    "allCitationsVerified": true,
+    "risks": [
+      {"clauseReference": "Section 8.1 - Liability Cap", "riskLevel": "High", "score": 9, "band": "Walk"},
+      {"clauseReference": "Section 6.1 - Data Protection", "riskLevel": "Medium", "score": 5, "band": "Escalate"}
+    ]
+  }
+}

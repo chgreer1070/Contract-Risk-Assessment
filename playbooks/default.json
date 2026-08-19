@@ -1,0 +1,54 @@
+{
+  "version": "2026-08-01",
+  "appliesTo": ["default"],
+  "entries": [
+    {
+      "id": "limitation_of_liability",
+      "match": ["liability", "limitation of liability"],
+      "preferred": "Cap at 12 months of fees; super-cap at 3x (or uncapped) for IP infringement and data breach; exclude indirect/consequential damages both ways.",
+      "fallback": "Cap up to 24 months of fees above $250K ACV; super-cap 2x for data.",
+      "walkAway": "Cap below 12 months of fees, or uncapped indirect damages running to you.",
+      "mandatoryEscalation": false
+    },
+    {
+      "id": "indemnification",
+      "match": ["indemnif"],
+      "preferred": "Mutual and capped; explicit third-party IP-infringement carve-out.",
+      "fallback": "Cap tied to 12-24 months of fees; exclude indirect damages.",
+      "walkAway": "One-directional indemnity without an IP carve-out.",
+      "mandatoryEscalation": false
+    },
+    {
+      "id": "data_protection",
+      "match": ["data protection", "data breach", "gdpr", "ccpa", "privacy"],
+      "preferred": "DPA with SCCs/IDTA as needed; 72-hour breach notification; audit rights and subprocessor controls.",
+      "fallback": "Defined breach windows and subprocessor controls.",
+      "walkAway": "No breach-notification obligation or no DPA.",
+      "mandatoryEscalation": true
+    },
+    {
+      "id": "termination",
+      "match": ["termination", "terminate"],
+      "preferred": "Termination for cause with a cure period; termination for convenience with notice.",
+      "fallback": "30-60 day notice for material uncured breach.",
+      "walkAway": "No termination rights, or termination-for-convenience only for the counterparty.",
+      "mandatoryEscalation": false
+    },
+    {
+      "id": "confidentiality",
+      "match": ["confidential", "nda", "non-disclosure"],
+      "preferred": "Mutual confidentiality surviving 3 years post-termination, with defined remedies.",
+      "fallback": "Mutual confidentiality with a defined survival period.",
+      "walkAway": "One-sided or unlimited-duration confidentiality obligations running to you.",
+      "mandatoryEscalation": false
+    },
+    {
+      "id": "sla_performance",
+      "match": ["sla", "uptime", "service level", "performance"],
+      "preferred": "99.9%+ uptime with meaningful, uncapped service credits.",
+      "fallback": "99.9% uptime with capped service credits.",
+      "walkAway": "No uptime commitment or no remedy for downtime.",
+      "mandatoryEscalation": false
+    }
+  ]
+}

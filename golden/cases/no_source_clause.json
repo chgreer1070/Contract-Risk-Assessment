@@ -1,0 +1,19 @@
+{
+  "name": "no_source_clause",
+  "state": {
+    "contract_type": "default",
+    "key_clauses_data": [],
+    "risk_assessment_data": [
+      {"riskType": "Operational", "clauseReference": "Section 12 - Miscellaneous", "riskLevel": "Low", "likelihood": "Possible", "potentialConsequence": "Minor administrative burden."}
+    ],
+    "recommended_actions": ""
+  },
+  "expect": {
+    "clauseCount": 0,
+    "weightedRiskScore": 3.0,
+    "allCitationsVerified": true,
+    "risks": [
+      {"clauseReference": "Section 12 - Miscellaneous", "riskLevel": "Low", "score": 3, "band": "Accept"}
+    ]
+  }
+}

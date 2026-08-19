@@ -19,6 +19,7 @@ Usage:
 """
 
 import json
+import os
 import re
 from datetime import datetime, timedelta
 
@@ -385,6 +386,134 @@ def top_risks(risks, n=3):
     return ordered[:n]
 
 
+# --- Configurable playbook (deterministic) ----------------------------------
+# A playbook encodes the firm's standard position per clause type: preferred
+# wording, an acceptable fallback, and a walk-away trigger, plus whether the
+# clause must always escalate. It is versioned data under ``playbooks/<type>.json``
+# so scoring reflects your standard rather than a generic template.
+
+_BUILTIN_PLAYBOOK = {'version': 'builtin', 'entries': []}
+
+# Action bands from a 0-10 score, highest threshold first (ISO 31000 style:
+# accept / negotiate to fallback / escalate / walk away).
+_BANDS = ((9, 'Walk'), (7, 'Escalate'), (4, 'Negotiate'), (0, 'Accept'))
+
+
+def load_playbook(contract_type='default'):
+    """Load ``playbooks/<contract_type>.json``, falling back to default then builtin.
+
+    Always returns a dict with a ``version`` and an ``entries`` list; never raises.
+    """
+    base = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'playbooks')
+    seen = []
+    for name in (contract_type, 'default'):
+        if name in seen:
+            continue
+        seen.append(name)
+        path = os.path.join(base, f'{name}.json')
+        if os.path.isfile(path):
+            try:
+                with open(path, encoding='utf-8') as f:
+                    pb = json.load(f)
+                if isinstance(pb, dict) and isinstance(pb.get('entries'), list):
+                    pb.setdefault('version', 'unversioned')
+                    return pb
+            except (OSError, ValueError):
+                continue
+    return dict(_BUILTIN_PLAYBOOK)
+
+
+def match_playbook_entry(risk, playbook):
+    """Return the first playbook entry whose matchers appear in the risk, else None."""
+    hay = (str(risk.get('riskType', '')) + ' ' + str(risk.get('clauseReference', ''))).lower()
+    for entry in playbook.get('entries', []):
+        matchers = entry.get('match', [])
+        if isinstance(matchers, str):
+            matchers = [matchers]
+        if any(str(m).lower() in hay for m in matchers if str(m).strip()):
+            return entry
+    return None
+
+
+def _band_for(score, mandatory_escalation=False):
+    """Map a 0-10 risk score to an action band; escalate at minimum when required."""
+    band = 'Accept'
+    for threshold, name in _BANDS:
+        if score >= threshold:
+            band = name
+            break
+    if mandatory_escalation and band in ('Accept', 'Negotiate'):
+        return 'Escalate'
+    return band
+
+
+def _apply_playbook(risks, playbook):
+    """Enrich each risk with its playbook reference, action band, and escalation flag."""
+    version = playbook.get('version', 'builtin')
+    for r in risks:
+        entry = match_playbook_entry(r, playbook)
+        mandatory = bool(entry.get('mandatoryEscalation', False)) if entry else False
+        r['mandatoryEscalation'] = mandatory
+        r['band'] = _band_for(r.get('score', 0), mandatory)
+        r['playbookRef'] = (
+            {'id': entry.get('id', ''), 'version': version} if entry else None
+        )
+    return risks
+
+
+# --- Reasoning + source citation (deterministic) ----------------------------
+
+def _verify_citation(quote, source_text):
+    """True if ``quote`` appears in ``source_text`` (whitespace- and case-insensitive)."""
+    if not quote or not source_text:
+        return False
+    q = re.sub(r'\s+', ' ', str(quote)).strip().lower()
+    s = re.sub(r'\s+', ' ', str(source_text)).strip().lower()
+    return bool(q) and q in s
+
+
+def _find_source_clause(risk, clauses):
+    """Best-effort match of a risk to the clause it references (by section, then type)."""
+    ref = str(risk.get('clauseReference', '')).lower()
+    if not ref:
+        return None
+    for c in clauses:
+        sec = str(c.get('section', '')).lower()
+        if sec and sec in ref:
+            return c
+    for c in clauses:
+        ct = str(c.get('clauseType', '')).lower()
+        if ct and ct in ref:
+            return c
+    return None
+
+
+def _attach_reasoning(risks, clauses):
+    """Add a deterministic rationale and a verified source citation to each risk.
+
+    Call after :func:`_apply_playbook` so the rationale can reference the band.
+    """
+    for r in risks:
+        pb = r.get('playbookRef') or {}
+        pb_note = f" {r.get('band', '')} per playbook '{pb['id']}'." if pb.get('id') else f" {r.get('band', '')}."
+        r['rationale'] = (
+            f"{r.get('riskLevel', 'Medium')} severity, {r.get('likelihood', 'Possible')} likelihood "
+            f"(score {r.get('score', 0)}/10).{pb_note}"
+        )
+        src = _find_source_clause(r, clauses)
+        if src and src.get('extractedClause'):
+            quote = str(src['extractedClause'])[:200]
+            r['citations'] = [{
+                'clauseId': src.get('id', ''),
+                'clauseReference': r.get('clauseReference', ''),
+                'quote': quote,
+                'verified': _verify_citation(quote, src['extractedClause']),
+            }]
+        else:
+            r['citations'] = []
+    return risks
+
+
 # --- Contract metadata + timeline --------------------------------------------
 # The pipeline's metadata-extraction node writes a dict into state['metadata'].
 # It is LLM output, so key casing / shape varies; normalize defensively.
@@ -483,12 +612,17 @@ def generate_dashboard_html(state):
     ac = _structured_list(state, 'recommended_actions_data', 'actions')
     actions = _actions_from_data(ac) if ac else parse_recommended_actions(state.get('recommended_actions', ''))
 
+    # Apply the configurable playbook (action band + escalation) and attach the
+    # deterministic reasoning + verified source citation to each risk.
+    playbook = load_playbook(state.get('contract_type', 'default'))
+    _apply_playbook(risks, playbook)
+    _attach_reasoning(risks, clauses)
+
     overall_score = compute_risk_score(risks)
     metadata = _build_metadata(state)
     timeline = _build_timeline(metadata)
 
     # Read the HTML template
-    import os
     template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                   'contract_visualization.html')
     with open(template_path) as f:
@@ -511,6 +645,7 @@ def generate_dashboard_html(state):
         'overallRiskScore': overall_score,
         'weightedRiskScore': compute_weighted_risk_score(risks),
         'topRisks': top_risks(risks, 3),
+        'playbookVersion': playbook.get('version', 'builtin'),
     }
 
     data_json = json.dumps(data, indent=2, ensure_ascii=False)

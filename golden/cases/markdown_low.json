@@ -1,0 +1,17 @@
+{
+  "name": "markdown_low",
+  "state": {
+    "contract_type": "default",
+    "key_clauses": "- **Clause Type**: Liability\n- **Extracted Clause**: Per Section 8.1 liability is capped at fees.\n- **Summary**: cap.\n",
+    "risk_assessment_report": "- **Risk Type**: Legal\n- **Clause Reference**: Section 8.1\n- **Risk Level**: Low\n- **Likelihood**: Unlikely\n- **Potential Consequence**: minor.\n",
+    "recommended_actions": ""
+  },
+  "expect": {
+    "clauseCount": 1,
+    "weightedRiskScore": 2.0,
+    "allCitationsVerified": true,
+    "risks": [
+      {"clauseReference": "Section 8.1", "riskLevel": "Low", "score": 2, "band": "Accept"}
+    ]
+  }
+}
