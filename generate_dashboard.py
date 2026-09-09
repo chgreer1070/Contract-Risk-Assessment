@@ -604,13 +604,19 @@ def generate_dashboard_html(state):
     # Prefer structured data from the pipeline nodes; fall back to parsing the
     # LLM markdown when structured lists aren't present (backward compatible).
     cl = _structured_list(state, 'key_clauses_data', 'clauses')
-    clauses = _clauses_from_data(cl) if cl else parse_key_clauses(state.get('key_clauses', ''))
+    clauses = _clauses_from_data(cl) if cl else []
+    if not clauses:
+        clauses = parse_key_clauses(state.get('key_clauses', ''))
 
     rk = _structured_list(state, 'risk_assessment_data', 'risk_assessment', 'risks')
-    risks = _risks_from_data(rk) if rk else parse_risk_assessment(state.get('risk_assessment_report', ''))
+    risks = _risks_from_data(rk) if rk else []
+    if not risks:
+        risks = parse_risk_assessment(state.get('risk_assessment_report', ''))
 
     ac = _structured_list(state, 'recommended_actions_data', 'actions')
-    actions = _actions_from_data(ac) if ac else parse_recommended_actions(state.get('recommended_actions', ''))
+    actions = _actions_from_data(ac) if ac else []
+    if not actions:
+        actions = parse_recommended_actions(state.get('recommended_actions', ''))
 
     # Apply the configurable playbook (action band + escalation) and attach the
     # deterministic reasoning + verified source citation to each risk.
