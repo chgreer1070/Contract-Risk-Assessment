@@ -12,6 +12,7 @@ This project automates contract analysis, risk assessment, and legal Q&A using s
 - **Recommended Actions**: Provides mitigation strategies for identified risks.
 - **Conversational Legal Assistant**: Fine-tuned chatbot for interactive contract-related Q&A.
 - **Visual Risk Dashboard**: 12 interactive charts (risk gauge, severity×likelihood heatmap, category radar, clause treemap, contract timeline, sortable actions table, and more) rendered from the analysis output.
+- **Confidence & Human Review**: Each risk carries a deterministic confidence score and a "needs review" flag (from citation verification, source-clause linkage, playbook coverage, field completeness, and mandatory escalation), with an aggregate summary of how much of the assessment is auto-acceptable vs. needs a human — supporting the human-oversight expectations of the EU AI Act / NIST AI RMF.
 - **Efficient Retrieval**: Uses hybrid chunking and Milvus vector database for precise legal text retrieval.
   
 
