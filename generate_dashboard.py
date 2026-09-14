@@ -578,6 +578,113 @@ def _attach_reasoning(risks, clauses):
     return risks
 
 
+# --- Reliability: deterministic confidence + human-review (abstention) --------
+# Production risk tooling must say how much to trust each score and when to defer
+# to a human (design doc Section 10; EU AI Act / NIST human-oversight, Section 11).
+# These signals are fully deterministic (no model): they read observable facts
+# about each already-enriched risk -- whether its citation was verified, whether
+# a source clause and playbook entry were found, and whether required fields are
+# present -- so the same input always yields the same confidence and review flag.
+
+# (penalty, reason) applied when a given signal is missing/weak. Weights sum to
+# 1.30 so that a risk failing every check floors at 0.0 confidence.
+_CONF_NO_CITATION = (0.30, 'no source citation')
+_CONF_CITATION_UNVERIFIED = (0.25, 'citation not verified against clause text')
+_CONF_NO_SOURCE_CLAUSE = (0.25, 'no matching source clause')
+_CONF_OUT_OF_PLAYBOOK = (0.20, 'clause type not covered by playbook')
+_CONF_NO_CONSEQUENCE = (0.15, 'missing potential consequence')
+_CONF_NO_REFERENCE = (0.15, 'missing clause reference')
+
+
+def _confidence_level(score):
+    """Bucket a 0-1 confidence score into High / Medium / Low."""
+    if score >= 0.75:
+        return 'High'
+    if score >= 0.5:
+        return 'Medium'
+    return 'Low'
+
+
+def assess_risk_confidence(risk, source_clause, playbook_entry):
+    """Return a deterministic confidence assessment for a single risk.
+
+    Args:
+        risk: an enriched risk dict (after playbook + reasoning passes).
+        source_clause: the clause matched by :func:`_find_source_clause`, or None.
+        playbook_entry: the entry matched by :func:`match_playbook_entry`, or None.
+
+    Returns a dict ``{'score', 'level', 'reviewRequired', 'reasons'}`` where score
+    is in [0, 1]. ``reviewRequired`` is True when confidence is low, the risk is
+    unlinked/out-of-playbook, or the playbook mandates escalation -- i.e. the tool
+    abstains to human review rather than presenting an untrustworthy verdict.
+    """
+    score = 1.0
+    reasons = []
+    cites = risk.get('citations') or []
+    if not cites:
+        score -= _CONF_NO_CITATION[0]
+        reasons.append(_CONF_NO_CITATION[1])
+    elif not any(c.get('verified') for c in cites):
+        score -= _CONF_CITATION_UNVERIFIED[0]
+        reasons.append(_CONF_CITATION_UNVERIFIED[1])
+    if source_clause is None:
+        score -= _CONF_NO_SOURCE_CLAUSE[0]
+        reasons.append(_CONF_NO_SOURCE_CLAUSE[1])
+    if playbook_entry is None:
+        score -= _CONF_OUT_OF_PLAYBOOK[0]
+        reasons.append(_CONF_OUT_OF_PLAYBOOK[1])
+    if not str(risk.get('potentialConsequence', '')).strip():
+        score -= _CONF_NO_CONSEQUENCE[0]
+        reasons.append(_CONF_NO_CONSEQUENCE[1])
+    if not str(risk.get('clauseReference', '')).strip():
+        score -= _CONF_NO_REFERENCE[0]
+        reasons.append(_CONF_NO_REFERENCE[1])
+    score = round(max(0.0, min(1.0, score)), 2)
+
+    review = (
+        score < 0.5
+        or source_clause is None
+        or playbook_entry is None
+        or bool(risk.get('mandatoryEscalation'))
+    )
+    if risk.get('mandatoryEscalation'):
+        reasons.append('mandatory escalation - human sign-off required')
+    return {
+        'score': score,
+        'level': _confidence_level(score),
+        'reviewRequired': review,
+        'reasons': reasons,
+    }
+
+
+def attach_confidence(risks, clauses, playbook):
+    """Attach a ``confidence`` object to each risk; return an aggregate summary.
+
+    Run after dedupe so the aggregate counts reflect the final risk set. The
+    per-risk source clause and playbook entry are recomputed here (both are pure
+    functions) to keep this pass independent of the reasoning/playbook passes.
+    """
+    review_count = 0
+    total = 0.0
+    for r in risks:
+        source = _find_source_clause(r, clauses)
+        entry = match_playbook_entry(r, playbook)
+        conf = assess_risk_confidence(r, source, entry)
+        r['confidence'] = conf
+        total += conf['score']
+        if conf['reviewRequired']:
+            review_count += 1
+    n = len(risks)
+    mean = round(total / n, 2) if n else 1.0
+    return {
+        'riskCount': n,
+        'reviewRequired': review_count,
+        'meanConfidence': mean,
+        'confidenceLevel': _confidence_level(mean),
+        'autoAcceptable': n > 0 and review_count == 0,
+    }
+
+
 # --- Contract metadata + timeline --------------------------------------------
 # The pipeline's metadata-extraction node writes a dict into state['metadata'].
 # It is LLM output, so key casing / shape varies; normalize defensively.
@@ -697,6 +804,10 @@ def generate_dashboard_html(state):
     risks = _dedupe(risks, lambda r: _norm_key(r['riskType'], r['clauseReference'], r['potentialConsequence']))
     actions = _dedupe(actions, lambda a: _norm_key(a['clause'], a['action']))
 
+    # Attach a deterministic confidence + human-review signal to each risk and
+    # summarize how much of the assessment can be auto-accepted vs needs review.
+    reliability = attach_confidence(risks, clauses, playbook)
+
     overall_score = compute_risk_score(risks)
     metadata = _build_metadata(state)
     timeline = _build_timeline(metadata)
@@ -725,6 +836,7 @@ def generate_dashboard_html(state):
         'weightedRiskScore': compute_weighted_risk_score(risks),
         'topRisks': top_risks(risks, 3),
         'playbookVersion': playbook.get('version', 'builtin'),
+        'reliability': reliability,
     }
 
     data_json = json.dumps(data, indent=2, ensure_ascii=False)
