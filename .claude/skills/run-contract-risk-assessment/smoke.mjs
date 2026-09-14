@@ -162,6 +162,15 @@ async function main() {
   const riskTableOk = riskRows === riskCount && riskRows > 0 && sortedDesc && visibleRisk === highRisk;
   console.log(`Risk table checks: ${riskTableOk ? 'PASS' : 'FAIL'}`);
 
+  // Confidence + human-review (abstention) signals (design doc S10).
+  const expectedReview = await page.evaluate(() =>
+    (CONTRACT_DATA.reliability && CONTRACT_DATA.reliability.reviewRequired) || 0);
+  const reviewFlags = await page.$$eval('#riskTableBody .review-flag', els => els.length);
+  const summaryText = await page.$eval('#reliabilitySummary', el => el.textContent.trim());
+  const reliabilityOk = expectedReview > 0 && reviewFlags === expectedReview
+    && summaryText.includes('flagged for human review');
+  console.log(`Reliability signals: ${reliabilityOk ? 'PASS' : 'FAIL'} (${reviewFlags} review flags, expected ${expectedReview})`);
+
   const sectionBoundaryOk = await page.evaluate(() => {
     const originalClauses = CONTRACT_DATA.keyClauses;
     const originalRisks = CONTRACT_DATA.riskAssessment;
@@ -222,7 +231,7 @@ async function main() {
   server.close();
 
   // Summary
-  const allGood = stats.length === 6 && clauses.length === 8 && canvases.length === 5 && pipelineNodes.length === 5 && riskTableOk && sectionBoundaryOk;
+  const allGood = stats.length === 6 && clauses.length === 8 && canvases.length === 5 && pipelineNodes.length === 5 && riskTableOk && sectionBoundaryOk && reliabilityOk;
   console.log(`\n${allGood ? 'ALL CHECKS PASSED' : 'SOME CHECKS FAILED'}`);
   process.exit(allGood ? 0 : 1);
 }
