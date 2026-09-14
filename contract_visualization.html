@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'sha384-yMs1Pc+3Oj8HjUwB/KLDoI7c/Ixx/GcgcuqktbeRgaSKYVROSR0/R89x+k2H/76r'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'sha384-U084sFL3ey5cLIiWdoJ81tSwx93Knizytu8RGs6GwIxx1TAQu+ePi2Bz0rFZEcON'">
     <title>Contract Risk Assessment Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
@@ -781,6 +781,8 @@
         .conf-High { color: var(--risk-low-text); font-weight: 600; }
         .conf-Medium { color: var(--risk-medium-text); font-weight: 600; }
         .conf-Low { color: var(--risk-high-text); font-weight: 600; }
+        .review-filter-label { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--text-primary); cursor: pointer; user-select: none; }
+        .review-filter-label input { cursor: pointer; }
     </style>
 </head>
 <body>
@@ -897,12 +899,15 @@
   <section class="card risk-table-section">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
       <h2 class="section-title" id="riskTableHeading" style="margin-bottom:0;font-size:1.1rem;font-weight:600;">All Identified Risks</h2>
-      <select id="riskTableFilter" aria-label="Filter risks by risk level" style="padding:0.4rem 0.8rem;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-primary);font-size:0.85rem;">
-        <option value="all">All Risk Levels</option>
-        <option value="High">High</option>
-        <option value="Medium">Medium</option>
-        <option value="Low">Low</option>
-      </select>
+      <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+        <label class="review-filter-label"><input type="checkbox" id="riskReviewFilter"> Needs review only</label>
+        <select id="riskTableFilter" aria-label="Filter risks by risk level" style="padding:0.4rem 0.8rem;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-primary);font-size:0.85rem;">
+          <option value="all">All Risk Levels</option>
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+        </select>
+      </div>
     </div>
     <div id="reliabilitySummary" class="reliability-summary" role="status"></div>
     <div style="overflow-x:auto;">
@@ -2118,7 +2123,8 @@ function renderRiskTable() {
       srcCell = '<span class="risk-src-none">No source</span>';
     }
     const bandCell = band ? '<span class="risk-band">' + esc(band) + '</span>' : '';
-    return '<tr data-risk="' + escAttr(level) + '">'
+    const needsReview = (r.confidence && r.confidence.reviewRequired) ? '1' : '0';
+    return '<tr data-risk="' + escAttr(level) + '" data-review="' + needsReview + '">'
       + '<td data-sort="' + score + '">' + esc(String(score)) + '/10</td>'
       + '<td>' + esc(r.riskType || '') + '</td>'
       + '<td>' + esc(r.clauseReference || '') + '</td>'
@@ -2201,11 +2207,34 @@ function sortRiskTable(colIdx, type) {
   }
 }
 
-function filterRiskTable(level) {
+// Apply both risk-table filters together: the risk-level select and the
+// "Needs review only" checkbox. Kept as one function so the two controls
+// intersect instead of clobbering each other, and announce the result count
+// for screen readers (WCAG 4.1.3 Status Messages).
+function applyRiskFilters() {
+  const sel = document.getElementById('riskTableFilter');
+  const chk = document.getElementById('riskReviewFilter');
+  const level = sel ? sel.value : 'all';
+  const reviewOnly = !!(chk && chk.checked);
+  let visible = 0;
   document.querySelectorAll('#riskTableBody tr').forEach(row => {
     if (row.cells.length === 1) return;  // keep the empty-state row visible
-    row.style.display = (level === 'all' || row.dataset.risk === level) ? '' : 'none';
+    const levelOk = level === 'all' || row.dataset.risk === level;
+    const reviewOk = !reviewOnly || row.dataset.review === '1';
+    const show = levelOk && reviewOk;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
   });
+  const scope = reviewOnly ? 'needs-review ' : '';
+  const lvl = level === 'all' ? '' : level + ' ';
+  announce(visible + ' ' + lvl + scope + 'risk' + (visible === 1 ? '' : 's') + ' shown.');
+}
+
+// Back-compat shim: some callers still pass a level directly.
+function filterRiskTable(level) {
+  const sel = document.getElementById('riskTableFilter');
+  if (sel && typeof level === 'string') sel.value = level;
+  applyRiskFilters();
 }
 
 function renderComparison() {
@@ -2411,7 +2440,9 @@ function bindEvents() {
     btn.addEventListener('click', () => sortRiskTable(parseInt(btn.dataset.col, 10), btn.dataset.type));
   });
   const riskFilter = document.getElementById('riskTableFilter');
-  if (riskFilter) riskFilter.addEventListener('change', e => filterRiskTable(e.target.value));
+  if (riskFilter) riskFilter.addEventListener('change', applyRiskFilters);
+  const reviewFilter = document.getElementById('riskReviewFilter');
+  if (reviewFilter) reviewFilter.addEventListener('change', applyRiskFilters);
   const cards = document.getElementById('clauseCards');
   cards.addEventListener('click', e => {
     const card = e.target.closest('.clause-card');
