@@ -31,7 +31,7 @@ jobs:
       - name: Install dev tools
         run: pip install -r requirements-dev.txt
       - name: Mypy
-        run: mypy generate_dashboard.py
+        run: mypy generate_dashboard.py calibration
 
   python-tests:
     name: Python tests + coverage
