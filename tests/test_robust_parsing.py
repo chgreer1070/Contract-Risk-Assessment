@@ -19,19 +19,21 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from generate_dashboard import (  # noqa: E402
-    parse_key_clauses,
     _canon_level,
     _canon_likelihood,
     generate_dashboard_html,
+    parse_key_clauses,
 )
 
 
 def _extract_contract_data(html):
-    """Pull the injected CONTRACT_DATA JSON object back out of the HTML."""
-    m = re.search(r'const CONTRACT_DATA = (\{.*?\n\});', html, re.DOTALL)
-    assert m, "CONTRACT_DATA block not found in generated HTML"
-    raw = m.group(1).replace('<\\/', '</')
-    return json.loads(raw)
+    """Pull the injected data back out of the JSON data island."""
+    m = re.search(
+        r'<script type="application/json" id="contract-data">\n(.*?)\n</script>',
+        html, re.DOTALL,
+    )
+    assert m, "contract-data island not found in generated HTML"
+    return json.loads(m.group(1))
 
 
 # --------------------------------------------------------------------------- #
