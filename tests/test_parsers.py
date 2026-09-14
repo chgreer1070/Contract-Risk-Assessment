@@ -475,6 +475,47 @@ def test_empty_structured_list_falls_back_to_markdown():
     assert data['keyClauses'][0]['clauseType'] == 'Liability'
 
 
+def test_structured_lists_with_no_usable_items_fall_back_to_markdown():
+    state = {
+        'key_clauses_data': [{'clauseType': 'Liability', 'extractedClause': '', 'summary': ''}],
+        'key_clauses': (
+            '- **Clause Type**: Liability\n'
+            '- **Extracted Clause**: Liability is capped.\n'
+            '- **Summary**: Cap language.\n'
+        ),
+        'risk_assessment_data': [
+            {
+                'riskType': 'Legal',
+                'riskLevel': 'High',
+                'likelihood': 'Likely',
+                'potentialConsequence': '',
+                'clauseReference': '',
+            },
+        ],
+        'risk_assessment_report': (
+            '- **Risk Type**: Legal\n'
+            '- **Clause Reference**: Section 8.1\n'
+            '- **Risk Level**: High\n'
+            '- **Likelihood**: Likely\n'
+            '- **Potential Consequence**: Unrecoverable losses.\n'
+        ),
+        'recommended_actions_data': [{'Clause': '', 'Recommended Action': ''}],
+        'recommended_actions': (
+            '- **Clause**: Section 8.1\n'
+            '- **Risk Level**: High\n'
+            '- **Recommended Action**: Negotiate a higher cap.\n'
+        ),
+    }
+    data = _extract_contract_data(generate_dashboard_html(state))
+    assert len(data['keyClauses']) == 1
+    assert data['keyClauses'][0]['extractedClause'] == 'Liability is capped.'
+    assert len(data['riskAssessment']) == 1
+    assert data['riskAssessment'][0]['clauseReference'] == 'Section 8.1'
+    assert data['overallRiskScore'] > 0
+    assert len(data['recommendedActions']) == 1
+    assert data['recommendedActions'][0]['action'] == 'Negotiate a higher cap.'
+
+
 def test_end_to_end_realistic_state():
     state = {
         'key_clauses': (
