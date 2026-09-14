@@ -171,6 +171,18 @@ async function main() {
     && summaryText.includes('flagged for human review');
   console.log(`Reliability signals: ${reliabilityOk ? 'PASS' : 'FAIL'} (${reviewFlags} review flags, expected ${expectedReview})`);
 
+  // "Needs review only" filter: checking it should show exactly the flagged rows.
+  await page.check('#riskReviewFilter');
+  await page.waitForTimeout(150);
+  const visibleReview = await page.$$eval('#riskTableBody tr', rows =>
+    rows.filter(r => r.cells.length > 1 && r.style.display !== 'none').length);
+  await page.uncheck('#riskReviewFilter');
+  await page.waitForTimeout(150);
+  const visibleAfterUncheck = await page.$$eval('#riskTableBody tr', rows =>
+    rows.filter(r => r.cells.length > 1 && r.style.display !== 'none').length);
+  const reviewFilterOk = visibleReview === expectedReview && visibleAfterUncheck === riskCount;
+  console.log(`Needs-review filter: ${reviewFilterOk ? 'PASS' : 'FAIL'} (${visibleReview} shown when on, ${visibleAfterUncheck} when off)`);
+
   const sectionBoundaryOk = await page.evaluate(() => {
     const originalClauses = CONTRACT_DATA.keyClauses;
     const originalRisks = CONTRACT_DATA.riskAssessment;
@@ -231,7 +243,7 @@ async function main() {
   server.close();
 
   // Summary
-  const allGood = stats.length === 6 && clauses.length === 8 && canvases.length === 5 && pipelineNodes.length === 5 && riskTableOk && sectionBoundaryOk && reliabilityOk;
+  const allGood = stats.length === 6 && clauses.length === 8 && canvases.length === 5 && pipelineNodes.length === 5 && riskTableOk && sectionBoundaryOk && reliabilityOk && reviewFilterOk;
   console.log(`\n${allGood ? 'ALL CHECKS PASSED' : 'SOME CHECKS FAILED'}`);
   process.exit(allGood ? 0 : 1);
 }
