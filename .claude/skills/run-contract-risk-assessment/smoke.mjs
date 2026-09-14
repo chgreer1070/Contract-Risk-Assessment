@@ -162,6 +162,53 @@ async function main() {
   const riskTableOk = riskRows === riskCount && riskRows > 0 && sortedDesc && visibleRisk === highRisk;
   console.log(`Risk table checks: ${riskTableOk ? 'PASS' : 'FAIL'}`);
 
+  const sectionBoundaryOk = await page.evaluate(() => {
+    const originalClauses = CONTRACT_DATA.keyClauses;
+    const originalRisks = CONTRACT_DATA.riskAssessment;
+    try {
+      CONTRACT_DATA.keyClauses = [
+        {
+          id: 'KC-A',
+          clauseType: 'Termination',
+          section: 'Section 1',
+          extractedClause: 'Payment terms.',
+          summary: 'Payment summary.',
+          riskImpact: 'Low',
+        },
+        {
+          id: 'KC-B',
+          clauseType: 'Termination',
+          section: 'Section 10.1',
+          extractedClause: 'Termination terms.',
+          summary: 'Termination summary.',
+          riskImpact: 'High',
+        },
+      ];
+      CONTRACT_DATA.riskAssessment = [
+        {
+          riskType: 'Legal',
+          clauseReference: 'Section 10.1 - Termination',
+          riskLevel: 'High',
+          likelihood: 'Likely',
+          potentialConsequence: 'Termination exposure.',
+          score: 9,
+          band: 'Walk',
+          rationale: 'High severity.',
+          citations: [],
+        },
+      ];
+      return risksForClause(CONTRACT_DATA.keyClauses[0]).length === 0
+        && risksForClause(CONTRACT_DATA.keyClauses[1]).length === 1
+        && sectionMatches('Section 1', 'Section 10.1 - Termination') === false
+        && sectionMatches('Section 10', 'Section 10.1 - Termination') === true;
+    } finally {
+      CONTRACT_DATA.keyClauses = originalClauses;
+      CONTRACT_DATA.riskAssessment = originalRisks;
+      renderClauseCards();
+    }
+  });
+  console.log(`Section boundary matching: ${sectionBoundaryOk ? 'PASS' : 'FAIL'}`);
+
   // Check for console errors
   const errors = [];
   page.on('pageerror', err => errors.push(err.message));
@@ -175,7 +222,7 @@ async function main() {
   server.close();
 
   // Summary
-  const allGood = stats.length === 6 && clauses.length === 8 && canvases.length === 5 && pipelineNodes.length === 5 && riskTableOk;
+  const allGood = stats.length === 6 && clauses.length === 8 && canvases.length === 5 && pipelineNodes.length === 5 && riskTableOk && sectionBoundaryOk;
   console.log(`\n${allGood ? 'ALL CHECKS PASSED' : 'SOME CHECKS FAILED'}`);
   process.exit(allGood ? 0 : 1);
 }

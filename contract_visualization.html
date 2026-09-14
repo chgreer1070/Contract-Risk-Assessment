@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'sha384-X954jm/20kQvceRuibK8NQgIgDvWp6c0qSJX+Yp4qbN+TDm9J5vLaQ3p55BH4Aq4'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'sha384-uacaQhkGvz8UmeY1wZ2cD8cAW54NfZL1GmwTZABH/f8qOmG484UFgNOnHQ4ZqIvZ'">
     <title>Contract Risk Assessment Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
@@ -1520,6 +1520,24 @@ function escAttr(str) {
 
 function getRiskColor(level) { return COLORS[level] || '#94a3b8'; }
 
+function sectionIds(text) {
+  const ids = [];
+  const re = /\b(?:section|article|clause)\s+(\d[\dA-Za-z]*(?:\.[\dA-Za-z]+)*)\b/gi;
+  let match;
+  while ((match = re.exec(text || '')) !== null) {
+    ids.push(match[1].toLowerCase());
+  }
+  return ids;
+}
+
+function sectionMatches(clauseSection, reference) {
+  const clauseIds = sectionIds(clauseSection);
+  const refIds = sectionIds(reference);
+  return clauseIds.some(sec =>
+    refIds.some(ref => ref === sec || ref.startsWith(sec + '.'))
+  );
+}
+
 // Announce dynamic changes (filtering/search results) to screen readers via the
 // polite aria-live region (WCAG 4.1.3 Status Messages).
 function announce(msg) {
@@ -1794,7 +1812,8 @@ function risksForClause(c) {
   return risks.filter(r => {
     if (r.citations && r.citations.some(ci => ci.clauseId && ci.clauseId === c.id)) return true;
     const ref = (r.clauseReference || '').toLowerCase();
-    return (sec && ref.includes(sec)) || (ct && ref.includes(ct));
+    if (sec && sectionIds(ref).length) return sectionMatches(sec, ref);
+    return ct && ref.includes(ct);
   });
 }
 
@@ -1840,11 +1859,10 @@ function filterCards(level, btn) {
 
 function filterByHeatmap(riskLevel, likelihood) {
   const matching = CONTRACT_DATA.riskAssessment.filter(r => r.riskLevel === riskLevel && r.likelihood === likelihood);
-  const matchTypes = matching.map(r => r.clauseReference);
   document.querySelectorAll('.clause-card').forEach(card => {
     const section = card.querySelector('div[style*="text-secondary"]').textContent;
-    const hasMatch = matchTypes.some(ref => ref.includes(section.replace('Section ','').split(' ')[0]));
-    if (hasMatch || matching.length === 0) {
+    const hasMatch = matching.some(r => sectionMatches(section, r.clauseReference || ''));
+    if (hasMatch) {
       card.classList.remove('hidden');
     } else {
       card.classList.add('hidden');
