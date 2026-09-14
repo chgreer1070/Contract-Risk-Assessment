@@ -1,0 +1,33 @@
+# Seed labeled calibration dataset (JSONL). REPLACE with real human/LLM labels.
+# Each row: predictedConfidence (from the tool), correct (ground truth 0/1),
+# reviewRequired (did the tool flag it), riskType. This seed is intentionally
+# slightly OVER-confident so the harness/calibrator have a measurable effect;
+# see docs/confidence_calibration.md for the labeling protocol.
+{"id": "s01", "predictedConfidence": 1.0, "correct": 1, "reviewRequired": false, "riskType": "Liability"}
+{"id": "s02", "predictedConfidence": 1.0, "correct": 1, "reviewRequired": false, "riskType": "Liability"}
+{"id": "s03", "predictedConfidence": 1.0, "correct": 1, "reviewRequired": false, "riskType": "Indemnification"}
+{"id": "s04", "predictedConfidence": 1.0, "correct": 1, "reviewRequired": false, "riskType": "Termination"}
+{"id": "s05", "predictedConfidence": 1.0, "correct": 1, "reviewRequired": false, "riskType": "Confidentiality"}
+{"id": "s06", "predictedConfidence": 1.0, "correct": 1, "reviewRequired": false, "riskType": "SLA"}
+{"id": "s07", "predictedConfidence": 1.0, "correct": 1, "reviewRequired": true, "riskType": "Data Protection"}
+{"id": "s08", "predictedConfidence": 1.0, "correct": 0, "reviewRequired": true, "riskType": "Data Protection"}
+{"id": "s09", "predictedConfidence": 0.8, "correct": 1, "reviewRequired": false, "riskType": "Liability"}
+{"id": "s10", "predictedConfidence": 0.8, "correct": 1, "reviewRequired": false, "riskType": "Termination"}
+{"id": "s11", "predictedConfidence": 0.8, "correct": 1, "reviewRequired": false, "riskType": "SLA"}
+{"id": "s12", "predictedConfidence": 0.8, "correct": 1, "reviewRequired": false, "riskType": "Confidentiality"}
+{"id": "s13", "predictedConfidence": 0.8, "correct": 0, "reviewRequired": true, "riskType": "IP"}
+{"id": "s14", "predictedConfidence": 0.8, "correct": 0, "reviewRequired": true, "riskType": "Force Majeure"}
+{"id": "s15", "predictedConfidence": 0.75, "correct": 1, "reviewRequired": false, "riskType": "Liability"}
+{"id": "s16", "predictedConfidence": 0.75, "correct": 1, "reviewRequired": false, "riskType": "Termination"}
+{"id": "s17", "predictedConfidence": 0.75, "correct": 1, "reviewRequired": false, "riskType": "SLA"}
+{"id": "s18", "predictedConfidence": 0.75, "correct": 0, "reviewRequired": false, "riskType": "Payment"}
+{"id": "s19", "predictedConfidence": 0.55, "correct": 1, "reviewRequired": false, "riskType": "Governing Law"}
+{"id": "s20", "predictedConfidence": 0.55, "correct": 1, "reviewRequired": false, "riskType": "Assignment"}
+{"id": "s21", "predictedConfidence": 0.55, "correct": 0, "reviewRequired": true, "riskType": "Warranty"}
+{"id": "s22", "predictedConfidence": 0.55, "correct": 0, "reviewRequired": true, "riskType": "Audit"}
+{"id": "s23", "predictedConfidence": 0.45, "correct": 1, "reviewRequired": true, "riskType": "Notice"}
+{"id": "s24", "predictedConfidence": 0.45, "correct": 0, "reviewRequired": true, "riskType": "Insurance"}
+{"id": "s25", "predictedConfidence": 0.45, "correct": 0, "reviewRequired": true, "riskType": "Publicity"}
+{"id": "s26", "predictedConfidence": 0.1, "correct": 0, "reviewRequired": true, "riskType": "Unknown"}
+{"id": "s27", "predictedConfidence": 0.1, "correct": 0, "reviewRequired": true, "riskType": "Unknown"}
+{"id": "s28", "predictedConfidence": 0.1, "correct": 0, "reviewRequired": true, "riskType": "Unknown"}
