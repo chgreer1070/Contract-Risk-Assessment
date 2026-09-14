@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'sha384-uacaQhkGvz8UmeY1wZ2cD8cAW54NfZL1GmwTZABH/f8qOmG484UFgNOnHQ4ZqIvZ'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'sha384-yMs1Pc+3Oj8HjUwB/KLDoI7c/Ixx/GcgcuqktbeRgaSKYVROSR0/R89x+k2H/76r'">
     <title>Contract Risk Assessment Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
@@ -772,6 +772,15 @@
         .risk-src-verified { color: var(--risk-low-text); font-weight: 600; }
         .risk-src-none { color: var(--text-secondary); font-style: italic; }
         .risk-src-quote { color: var(--text-secondary); }
+        /* Confidence + human-review (abstention) signals */
+        .reliability-summary { margin: 0 0 1rem; padding: 0.6rem 0.9rem; border-radius: 10px; border: 1px solid var(--border-color); background: var(--bg-card-hover); font-size: 0.85rem; color: var(--text-primary); }
+        .reliability-summary strong { font-weight: 700; }
+        .review-flag { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 12px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(239, 68, 68, 0.15); color: var(--risk-high-text); }
+        .review-clear { color: var(--risk-low-text); font-weight: 600; font-size: 0.75rem; }
+        .conf-note { display: block; margin-top: 0.2rem; font-size: 0.7rem; color: var(--text-secondary); }
+        .conf-High { color: var(--risk-low-text); font-weight: 600; }
+        .conf-Medium { color: var(--risk-medium-text); font-weight: 600; }
+        .conf-Low { color: var(--risk-high-text); font-weight: 600; }
     </style>
 </head>
 <body>
@@ -895,9 +904,10 @@
         <option value="Low">Low</option>
       </select>
     </div>
+    <div id="reliabilitySummary" class="reliability-summary" role="status"></div>
     <div style="overflow-x:auto;">
       <table class="actions-table" id="riskTable">
-        <caption class="visually-hidden">All identified contract risks with score, risk level, likelihood, action band, reasoning, and verified source.</caption>
+        <caption class="visually-hidden">All identified contract risks with score, risk level, likelihood, action band, reasoning, verified source, and confidence / human-review status.</caption>
         <thead>
           <tr>
             <th scope="col" aria-sort="none"><button type="button" class="th-sort risk-th-sort" data-col="0" data-type="num" aria-label="Sort by score">Score ↕</button></th>
@@ -908,6 +918,7 @@
             <th scope="col" aria-sort="none"><button type="button" class="th-sort risk-th-sort" data-col="5" data-type="rank" aria-label="Sort by action band">Band ↕</button></th>
             <th scope="col">Why</th>
             <th scope="col">Source</th>
+            <th scope="col">Review</th>
           </tr>
         </thead>
         <tbody id="riskTableBody"></tbody>
@@ -943,7 +954,7 @@
       "id": "KC-001",
       "clauseType": "Liability",
       "section": "Section 8.1",
-      "extractedClause": "Provider's total aggregate liability shall not exceed the total fees paid by Client in the 12-month period preceding the claim. In no event shall Provider be liable for indirect, incidental, or consequential damages.",
+      "extractedClause": "Provider\u0027s total aggregate liability shall not exceed the total fees paid by Client in the 12-month period preceding the claim. In no event shall Provider be liable for indirect, incidental, or consequential damages.",
       "summary": "Caps provider liability to 12 months of fees paid. Excludes indirect damages.",
       "riskImpact": "High"
     },
@@ -1018,15 +1029,21 @@
         "id": "limitation_of_liability",
         "version": "2026-08-01"
       },
-      "rationale": "High severity, Possible likelihood (score 8/10). Escalate per playbook 'limitation_of_liability'.",
+      "rationale": "High severity, Possible likelihood (score 8/10). Escalate per playbook \u0027limitation_of_liability\u0027.",
       "citations": [
         {
           "clauseId": "KC-001",
           "clauseReference": "Section 8.1 - Liability Cap",
-          "quote": "Provider's total aggregate liability shall not exceed the total fees paid by Client in the 12-month period preceding the claim. In no event shall Provider be liable for indirect, incidental, or conseq",
+          "quote": "Provider\u0027s total aggregate liability shall not exceed the total fees paid by Client in the 12-month period preceding the claim. In no event shall Provider be liable for indirect, incidental, or conseq",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 1.0,
+        "level": "High",
+        "reviewRequired": false,
+        "reasons": []
+      }
     },
     {
       "riskType": "Legal",
@@ -1034,14 +1051,14 @@
       "riskLevel": "High",
       "likelihood": "Unlikely",
       "potentialConsequence": "Narrow indemnification may leave client exposed to non-IP claims.",
-      "score": 7,
+      "score": 6,
       "mandatoryEscalation": false,
-      "band": "Escalate",
+      "band": "Negotiate",
       "playbookRef": {
         "id": "indemnification",
         "version": "2026-08-01"
       },
-      "rationale": "High severity, Unlikely likelihood (score 7/10). Escalate per playbook 'indemnification'.",
+      "rationale": "High severity, Unlikely likelihood (score 6/10). Negotiate per playbook \u0027indemnification\u0027.",
       "citations": [
         {
           "clauseId": "KC-004",
@@ -1049,7 +1066,13 @@
           "quote": "Provider shall indemnify and hold harmless Client against third-party claims alleging that the Service infringes intellectual property rights, excluding claims arising from Client modifications.",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 1.0,
+        "level": "High",
+        "reviewRequired": false,
+        "reasons": []
+      }
     },
     {
       "riskType": "Compliance",
@@ -1057,14 +1080,14 @@
       "riskLevel": "High",
       "likelihood": "Possible",
       "potentialConsequence": "Regulatory fines up to 4% of annual revenue for GDPR non-compliance.",
-      "score": 9,
+      "score": 8,
       "mandatoryEscalation": true,
-      "band": "Walk",
+      "band": "Escalate",
       "playbookRef": {
         "id": "data_protection",
         "version": "2026-08-01"
       },
-      "rationale": "High severity, Possible likelihood (score 9/10). Walk per playbook 'data_protection'.",
+      "rationale": "High severity, Possible likelihood (score 8/10). Escalate per playbook \u0027data_protection\u0027.",
       "citations": [
         {
           "clauseId": "KC-005",
@@ -1072,7 +1095,15 @@
           "quote": "Provider shall comply with GDPR, CCPA, and applicable data protection laws. Provider must notify Client of any data breach within 72 hours of discovery.",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 1.0,
+        "level": "High",
+        "reviewRequired": true,
+        "reasons": [
+          "mandatory escalation - human sign-off required"
+        ]
+      }
     },
     {
       "riskType": "Compliance",
@@ -1080,14 +1111,14 @@
       "riskLevel": "Low",
       "likelihood": "Unlikely",
       "potentialConsequence": "Limited enforcement for confidentiality breaches post-termination.",
-      "score": 3,
+      "score": 2,
       "mandatoryEscalation": false,
       "band": "Accept",
       "playbookRef": {
         "id": "confidentiality",
         "version": "2026-08-01"
       },
-      "rationale": "Low severity, Unlikely likelihood (score 3/10). Accept per playbook 'confidentiality'.",
+      "rationale": "Low severity, Unlikely likelihood (score 2/10). Accept per playbook \u0027confidentiality\u0027.",
       "citations": [
         {
           "clauseId": "KC-003",
@@ -1095,7 +1126,13 @@
           "quote": "Both parties agree to maintain strict confidentiality of proprietary information for the duration of this Agreement and 3 years following termination.",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 1.0,
+        "level": "High",
+        "reviewRequired": false,
+        "reasons": []
+      }
     },
     {
       "riskType": "Financial",
@@ -1103,14 +1140,14 @@
       "riskLevel": "Medium",
       "likelihood": "Possible",
       "potentialConsequence": "Capped credits may not compensate for business losses during outages.",
-      "score": 6,
+      "score": 5,
       "mandatoryEscalation": false,
       "band": "Negotiate",
       "playbookRef": {
         "id": "sla_performance",
         "version": "2026-08-01"
       },
-      "rationale": "Medium severity, Possible likelihood (score 6/10). Negotiate per playbook 'sla_performance'.",
+      "rationale": "Medium severity, Possible likelihood (score 5/10). Negotiate per playbook \u0027sla_performance\u0027.",
       "citations": [
         {
           "clauseId": "KC-007",
@@ -1118,7 +1155,13 @@
           "quote": "Provider guarantees 99.9% monthly uptime. Service credits of 5% of monthly fees apply for each 0.1% below the SLA target, capped at 30% of monthly fees.",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 1.0,
+        "level": "High",
+        "reviewRequired": false,
+        "reasons": []
+      }
     },
     {
       "riskType": "Financial",
@@ -1126,22 +1169,28 @@
       "riskLevel": "High",
       "likelihood": "Likely",
       "potentialConsequence": "12-month fee cap limits financial recovery in catastrophic failures.",
-      "score": 8,
+      "score": 9,
       "mandatoryEscalation": false,
-      "band": "Escalate",
+      "band": "Walk",
       "playbookRef": {
         "id": "limitation_of_liability",
         "version": "2026-08-01"
       },
-      "rationale": "High severity, Likely likelihood (score 8/10). Escalate per playbook 'limitation_of_liability'.",
+      "rationale": "High severity, Likely likelihood (score 9/10). Walk per playbook \u0027limitation_of_liability\u0027.",
       "citations": [
         {
           "clauseId": "KC-001",
           "clauseReference": "Section 8.1 - Liability Cap",
-          "quote": "Provider's total aggregate liability shall not exceed the total fees paid by Client in the 12-month period preceding the claim. In no event shall Provider be liable for indirect, incidental, or conseq",
+          "quote": "Provider\u0027s total aggregate liability shall not exceed the total fees paid by Client in the 12-month period preceding the claim. In no event shall Provider be liable for indirect, incidental, or conseq",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 1.0,
+        "level": "High",
+        "reviewRequired": false,
+        "reasons": []
+      }
     },
     {
       "riskType": "Reputational",
@@ -1156,7 +1205,7 @@
         "id": "data_protection",
         "version": "2026-08-01"
       },
-      "rationale": "Medium severity, Possible likelihood (score 5/10). Escalate per playbook 'data_protection'.",
+      "rationale": "Medium severity, Possible likelihood (score 5/10). Escalate per playbook \u0027data_protection\u0027.",
       "citations": [
         {
           "clauseId": "KC-005",
@@ -1164,7 +1213,15 @@
           "quote": "Provider shall comply with GDPR, CCPA, and applicable data protection laws. Provider must notify Client of any data breach within 72 hours of discovery.",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 1.0,
+        "level": "High",
+        "reviewRequired": true,
+        "reasons": [
+          "mandatory escalation - human sign-off required"
+        ]
+      }
     },
     {
       "riskType": "Reputational",
@@ -1172,14 +1229,14 @@
       "riskLevel": "Low",
       "likelihood": "Unlikely",
       "potentialConsequence": "Abrupt termination could disrupt services and impact end-user trust.",
-      "score": 3,
+      "score": 2,
       "mandatoryEscalation": false,
       "band": "Accept",
       "playbookRef": {
         "id": "termination",
         "version": "2026-08-01"
       },
-      "rationale": "Low severity, Unlikely likelihood (score 3/10). Accept per playbook 'termination'.",
+      "rationale": "Low severity, Unlikely likelihood (score 2/10). Accept per playbook \u0027termination\u0027.",
       "citations": [
         {
           "clauseId": "KC-002",
@@ -1187,7 +1244,13 @@
           "quote": "Either party may terminate this Agreement with 30 days written notice upon material breach that remains uncured for 15 business days after notification.",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 1.0,
+        "level": "High",
+        "reviewRequired": false,
+        "reasons": []
+      }
     },
     {
       "riskType": "Operational",
@@ -1207,7 +1270,15 @@
           "quote": "Neither party shall be liable for delays caused by events beyond reasonable control, including natural disasters, war, or pandemic, for a period not exceeding 90 days.",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 0.8,
+        "level": "High",
+        "reviewRequired": true,
+        "reasons": [
+          "clause type not covered by playbook"
+        ]
+      }
     },
     {
       "riskType": "Operational",
@@ -1222,7 +1293,7 @@
         "id": "sla_performance",
         "version": "2026-08-01"
       },
-      "rationale": "Medium severity, Likely likelihood (score 6/10). Negotiate per playbook 'sla_performance'.",
+      "rationale": "Medium severity, Likely likelihood (score 6/10). Negotiate per playbook \u0027sla_performance\u0027.",
       "citations": [
         {
           "clauseId": "KC-007",
@@ -1230,7 +1301,13 @@
           "quote": "Provider guarantees 99.9% monthly uptime. Service credits of 5% of monthly fees apply for each 0.1% below the SLA target, capped at 30% of monthly fees.",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 1.0,
+        "level": "High",
+        "reviewRequired": false,
+        "reasons": []
+      }
     },
     {
       "riskType": "Legal",
@@ -1250,7 +1327,15 @@
           "quote": "Client retains all intellectual property rights to its data and content. Provider retains all rights to the platform, including improvements made during the term.",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 0.8,
+        "level": "High",
+        "reviewRequired": true,
+        "reasons": [
+          "clause type not covered by playbook"
+        ]
+      }
     },
     {
       "riskType": "Compliance",
@@ -1258,14 +1343,14 @@
       "riskLevel": "Low",
       "likelihood": "Unlikely",
       "potentialConsequence": "No explicit data return/deletion obligations upon termination.",
-      "score": 4,
+      "score": 2,
       "mandatoryEscalation": false,
-      "band": "Negotiate",
+      "band": "Accept",
       "playbookRef": {
         "id": "termination",
         "version": "2026-08-01"
       },
-      "rationale": "Low severity, Unlikely likelihood (score 4/10). Negotiate per playbook 'termination'.",
+      "rationale": "Low severity, Unlikely likelihood (score 2/10). Accept per playbook \u0027termination\u0027.",
       "citations": [
         {
           "clauseId": "KC-002",
@@ -1273,7 +1358,13 @@
           "quote": "Either party may terminate this Agreement with 30 days written notice upon material breach that remains uncured for 15 business days after notification.",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 1.0,
+        "level": "High",
+        "reviewRequired": false,
+        "reasons": []
+      }
     }
   ],
   "recommendedActions": [
@@ -1367,31 +1458,31 @@
       "name": "Extract Chunks",
       "icon": "📄",
       "status": "complete",
-      "duration": "12.3s"
+      "duration": "done"
     },
     {
-      "name": "Embed & Store",
+      "name": "Embed \u0026 Store",
       "icon": "🔢",
       "status": "complete",
-      "duration": "8.7s"
+      "duration": "done"
     },
     {
       "name": "Key Clauses",
       "icon": "📋",
       "status": "complete",
-      "duration": "15.1s"
+      "duration": "done"
     },
     {
       "name": "Risk Assessment",
       "icon": "⚠️",
       "status": "complete",
-      "duration": "18.4s"
+      "duration": "done"
     },
     {
       "name": "Actions",
       "icon": "✅",
       "status": "complete",
-      "duration": "11.2s"
+      "duration": "done"
     }
   ],
   "timeline": [
@@ -1401,51 +1492,52 @@
       "type": "milestone"
     },
     {
-      "date": "2025-07-15",
+      "date": "2026-01-14",
       "event": "Mid-term Review",
       "type": "review"
     },
     {
-      "date": "2026-01-15",
-      "event": "Annual Renewal",
-      "type": "deadline"
-    },
-    {
       "date": "2026-12-15",
-      "event": "Termination Notice",
+      "event": "Termination Notice (30d)",
       "type": "deadline"
     },
     {
       "date": "2027-01-14",
-      "event": "Expiration",
+      "event": "Contract Expiration",
       "type": "milestone"
     }
   ],
-  "overallRiskScore": 6.4,
-  "weightedRiskScore": 6.4,
+  "overallRiskScore": 5.2,
+  "weightedRiskScore": 6.0,
   "topRisks": [
     {
-      "riskType": "Compliance",
-      "clauseReference": "Section 6.1 - Data Protection",
+      "riskType": "Financial",
+      "clauseReference": "Section 8.1 - Liability Cap",
       "riskLevel": "High",
-      "likelihood": "Possible",
-      "potentialConsequence": "Regulatory fines up to 4% of annual revenue for GDPR non-compliance.",
+      "likelihood": "Likely",
+      "potentialConsequence": "12-month fee cap limits financial recovery in catastrophic failures.",
       "score": 9,
-      "mandatoryEscalation": true,
+      "mandatoryEscalation": false,
       "band": "Walk",
       "playbookRef": {
-        "id": "data_protection",
+        "id": "limitation_of_liability",
         "version": "2026-08-01"
       },
-      "rationale": "High severity, Possible likelihood (score 9/10). Walk per playbook 'data_protection'.",
+      "rationale": "High severity, Likely likelihood (score 9/10). Walk per playbook \u0027limitation_of_liability\u0027.",
       "citations": [
         {
-          "clauseId": "KC-005",
-          "clauseReference": "Section 6.1 - Data Protection",
-          "quote": "Provider shall comply with GDPR, CCPA, and applicable data protection laws. Provider must notify Client of any data breach within 72 hours of discovery.",
+          "clauseId": "KC-001",
+          "clauseReference": "Section 8.1 - Liability Cap",
+          "quote": "Provider\u0027s total aggregate liability shall not exceed the total fees paid by Client in the 12-month period preceding the claim. In no event shall Provider be liable for indirect, incidental, or conseq",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 1.0,
+        "level": "High",
+        "reviewRequired": false,
+        "reasons": []
+      }
     },
     {
       "riskType": "Legal",
@@ -1460,41 +1552,62 @@
         "id": "limitation_of_liability",
         "version": "2026-08-01"
       },
-      "rationale": "High severity, Possible likelihood (score 8/10). Escalate per playbook 'limitation_of_liability'.",
+      "rationale": "High severity, Possible likelihood (score 8/10). Escalate per playbook \u0027limitation_of_liability\u0027.",
       "citations": [
         {
           "clauseId": "KC-001",
           "clauseReference": "Section 8.1 - Liability Cap",
-          "quote": "Provider's total aggregate liability shall not exceed the total fees paid by Client in the 12-month period preceding the claim. In no event shall Provider be liable for indirect, incidental, or conseq",
+          "quote": "Provider\u0027s total aggregate liability shall not exceed the total fees paid by Client in the 12-month period preceding the claim. In no event shall Provider be liable for indirect, incidental, or conseq",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 1.0,
+        "level": "High",
+        "reviewRequired": false,
+        "reasons": []
+      }
     },
     {
-      "riskType": "Financial",
-      "clauseReference": "Section 8.1 - Liability Cap",
+      "riskType": "Compliance",
+      "clauseReference": "Section 6.1 - Data Protection",
       "riskLevel": "High",
-      "likelihood": "Likely",
-      "potentialConsequence": "12-month fee cap limits financial recovery in catastrophic failures.",
+      "likelihood": "Possible",
+      "potentialConsequence": "Regulatory fines up to 4% of annual revenue for GDPR non-compliance.",
       "score": 8,
-      "mandatoryEscalation": false,
+      "mandatoryEscalation": true,
       "band": "Escalate",
       "playbookRef": {
-        "id": "limitation_of_liability",
+        "id": "data_protection",
         "version": "2026-08-01"
       },
-      "rationale": "High severity, Likely likelihood (score 8/10). Escalate per playbook 'limitation_of_liability'.",
+      "rationale": "High severity, Possible likelihood (score 8/10). Escalate per playbook \u0027data_protection\u0027.",
       "citations": [
         {
-          "clauseId": "KC-001",
-          "clauseReference": "Section 8.1 - Liability Cap",
-          "quote": "Provider's total aggregate liability shall not exceed the total fees paid by Client in the 12-month period preceding the claim. In no event shall Provider be liable for indirect, incidental, or conseq",
+          "clauseId": "KC-005",
+          "clauseReference": "Section 6.1 - Data Protection",
+          "quote": "Provider shall comply with GDPR, CCPA, and applicable data protection laws. Provider must notify Client of any data breach within 72 hours of discovery.",
           "verified": true
         }
-      ]
+      ],
+      "confidence": {
+        "score": 1.0,
+        "level": "High",
+        "reviewRequired": true,
+        "reasons": [
+          "mandatory escalation - human sign-off required"
+        ]
+      }
     }
   ],
-  "playbookVersion": "2026-08-01"
+  "playbookVersion": "2026-08-01",
+  "reliability": {
+    "riskCount": 12,
+    "reviewRequired": 4,
+    "meanConfidence": 0.97,
+    "confidenceLevel": "High",
+    "autoAcceptable": false
+  }
 }
 </script>
 <script>
@@ -1984,7 +2097,7 @@ function renderRiskTable() {
   const tbody = document.getElementById('riskTableBody');
   if (!tbody) return;
   if (!risks.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);font-style:italic;padding:1.5rem">No risks identified.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);font-style:italic;padding:1.5rem">No risks identified.</td></tr>';
     return;
   }
   tbody.innerHTML = risks.map(r => {
@@ -2014,8 +2127,46 @@ function renderRiskTable() {
       + '<td data-sort="' + (RISK_BAND_RANK[band] || 0) + '">' + bandCell + '</td>'
       + '<td>' + esc(r.rationale || '') + '</td>'
       + '<td>' + srcCell + '</td>'
+      + '<td>' + reviewCell(r.confidence) + '</td>'
       + '</tr>';
   }).join('');
+}
+
+// Summarize how much of the assessment can be auto-accepted vs needs a human,
+// from the deterministic aggregate the generator attaches (CONTRACT_DATA.reliability).
+function renderReliability() {
+  const el = document.getElementById('reliabilitySummary');
+  if (!el) return;
+  const rel = CONTRACT_DATA.reliability;
+  if (!rel || !rel.riskCount) { el.style.display = 'none'; return; }
+  const need = rel.reviewRequired;
+  const pct = Math.round((typeof rel.meanConfidence === 'number' ? rel.meanConfidence : 0) * 100);
+  const lvl = rel.confidenceLevel || '';
+  if (need > 0) {
+    el.innerHTML = '\u26a0\ufe0f <strong>' + need + ' of ' + rel.riskCount
+      + '</strong> risk' + (need === 1 ? '' : 's') + ' flagged for human review'
+      + ' \u00b7 mean confidence <span class="conf-' + esc(lvl) + '">' + esc(lvl) + '</span> (' + pct + '%).';
+  } else {
+    el.innerHTML = '\u2705 <strong>All ' + rel.riskCount + '</strong> risk'
+      + (rel.riskCount === 1 ? '' : 's') + ' auto-acceptable (no review flags)'
+      + ' \u00b7 mean confidence <span class="conf-' + esc(lvl) + '">' + esc(lvl) + '</span> (' + pct + '%).';
+  }
+}
+
+// Render the per-risk confidence + human-review cell. When review is required we
+// show a badge whose tooltip lists the deterministic reasons (design doc S10).
+function reviewCell(conf) {
+  if (!conf) return '';
+  const lvl = conf.level || '';
+  const confSpan = '<span class="conf-' + esc(lvl) + '">' + esc(lvl) + '</span>';
+  const pct = Math.round((typeof conf.score === 'number' ? conf.score : 0) * 100);
+  if (conf.reviewRequired) {
+    const reasons = (conf.reasons || []).join('; ');
+    return '<span class="review-flag" title="' + escAttr(reasons) + '">Needs review</span>'
+      + '<span class="conf-note">Confidence: ' + confSpan + ' (' + pct + '%)</span>';
+  }
+  return '<span class="review-clear">Auto-OK</span>'
+    + '<span class="conf-note">Confidence: ' + confSpan + ' (' + pct + '%)</span>';
 }
 
 function sortRiskTable(colIdx, type) {
@@ -2186,6 +2337,11 @@ function renderA11y() {
     '<h2>Chart data (text alternative)</h2>'
     + '<p>Overall risk score: ' + d.overallRiskScore + ' out of 10. Risks by severity: '
     + highCount + ' High, ' + medCount + ' Medium, ' + lowCount + ' Low.</p>'
+    + (d.reliability && d.reliability.riskCount
+        ? '<p>Human review: ' + d.reliability.reviewRequired + ' of ' + d.reliability.riskCount
+          + ' risks flagged for review; mean confidence ' + d.reliability.confidenceLevel
+          + ' (' + Math.round((d.reliability.meanConfidence || 0) * 100) + '%).</p>'
+        : '')
     + '<table><caption>Risk counts by category and level</caption><thead><tr>'
     + '<th scope="col">Category</th><th scope="col">High</th><th scope="col">Medium</th><th scope="col">Low</th>'
     + '</tr></thead><tbody>' + rowsByType + '</tbody></table>'
@@ -2207,6 +2363,10 @@ function renderTopRisks() {
   const html = items.map((r, i) => {
     const lvl = (r.riskLevel || '').toLowerCase();
     const band = r.band ? '<span class="risk-band">' + esc(r.band) + '</span>' : '';
+    const conf = r.confidence;
+    const reviewChip = (conf && conf.reviewRequired)
+      ? ' <span class="review-flag" title="' + escAttr((conf.reasons || []).join('; ')) + '">Needs review</span>'
+      : '';
     const why = r.rationale ? '<div class="risk-why"><strong>Why:</strong> ' + esc(r.rationale) + '</div>' : '';
     const cite = r.citations && r.citations[0];
     const citeHtml = cite
@@ -2217,6 +2377,7 @@ function renderTopRisks() {
       + '<div style="display:flex;justify-content:space-between;gap:0.5rem;align-items:flex-start;margin-top:0.2rem">'
       + '<span style="font-weight:600">' + esc(r.riskType || 'Risk') + '</span>'
       + '<span class="badge badge-' + lvl + '">' + esc(r.riskLevel || '') + '</span></div>'
+      + (reviewChip ? '<div style="margin-top:0.3rem">' + reviewChip + '</div>' : '')
       + '<div style="font-size:0.8rem;color:var(--text-secondary);margin:0.3rem 0">' + esc(r.clauseReference || '') + '</div>'
       + '<div style="font-size:0.85rem">' + esc(r.potentialConsequence || '') + '</div>'
       + '<div style="margin-top:0.4rem;font-size:0.8rem;color:var(--text-secondary)">Score <strong style="color:var(--text-primary)">' + esc(String(r.score)) + '/10</strong> &middot; ' + esc(r.likelihood || '') + ' likelihood' + band + '</div>'
@@ -2281,6 +2442,7 @@ document.addEventListener('DOMContentLoaded', function() {
   renderTimeline();
   renderActionsTable();
   renderRiskTable();
+  renderReliability();
   renderComparison();
   renderA11y();
   bindTooltips();
