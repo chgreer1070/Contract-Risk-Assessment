@@ -35,6 +35,19 @@ def test_find_source_clause_by_section_then_type():
     assert _find_source_clause({'clauseReference': ''}, clauses) is None
 
 
+def test_find_source_clause_does_not_match_section_prefix():
+    clauses = [
+        {'id': 'KC-001', 'clauseType': 'Payment', 'section': 'Section 1',
+         'extractedClause': 'Payment is due within 30 days.'},
+        {'id': 'KC-010', 'clauseType': 'Termination', 'section': 'Section 10',
+         'extractedClause': 'Either party may terminate for cause.'},
+    ]
+
+    match = _find_source_clause({'clauseReference': 'Section 10 - Termination'}, clauses)
+
+    assert match['id'] == 'KC-010'
+
+
 def test_attach_reasoning_adds_rationale_and_verified_citation():
     pb = load_playbook('default')
     clauses = [{'id': 'KC-001', 'clauseType': 'Liability', 'section': 'Section 8.1',

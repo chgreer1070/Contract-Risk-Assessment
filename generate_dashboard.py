@@ -472,18 +472,28 @@ def _verify_citation(quote, source_text):
     return bool(q) and q in s
 
 
+def _reference_contains_exact_token(reference, token):
+    """True when ``token`` appears in ``reference`` as a complete normalized token."""
+    ref = re.sub(r'\s+', ' ', str(reference)).strip().lower()
+    tok = re.sub(r'\s+', ' ', str(token)).strip().lower()
+    if not ref or not tok:
+        return False
+    pattern = rf'(?<![a-z0-9.]){re.escape(tok)}(?![a-z0-9.])'
+    return re.search(pattern, ref) is not None
+
+
 def _find_source_clause(risk, clauses):
     """Best-effort match of a risk to the clause it references (by section, then type)."""
     ref = str(risk.get('clauseReference', '')).lower()
     if not ref:
         return None
     for c in clauses:
-        sec = str(c.get('section', '')).lower()
-        if sec and sec in ref:
+        sec = c.get('section', '')
+        if _reference_contains_exact_token(ref, sec):
             return c
     for c in clauses:
-        ct = str(c.get('clauseType', '')).lower()
-        if ct and ct in ref:
+        ct = c.get('clauseType', '')
+        if _reference_contains_exact_token(ref, ct):
             return c
     return None
 
