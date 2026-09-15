@@ -686,7 +686,18 @@ def load_calibrator(path=None):
         return None
     if n_bins < 1 or len(bins) != n_bins or not data.get('fitted', True):
         return None
-    return {'n_bins': n_bins, 'bin_accuracy': bins}
+    normalized_bins = []
+    for value in bins:
+        if value is None:
+            normalized_bins.append(None)
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        score = float(value)
+        if not 0.0 <= score <= 1.0:
+            return None
+        normalized_bins.append(score)
+    return {'n_bins': n_bins, 'bin_accuracy': normalized_bins}
 
 
 def calibrate_score(score, calibrator):

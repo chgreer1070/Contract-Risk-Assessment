@@ -248,6 +248,17 @@ def test_load_calibrator_from_env(tmp_path, monkeypatch):
     assert cal == {'n_bins': 4, 'bin_accuracy': [None, None, None, 0.5]}
 
 
+def test_malformed_calibrator_bin_values_do_not_crash_dashboard(tmp_path, monkeypatch):
+    p = tmp_path / 'bad-bin.json'
+    p.write_text(json.dumps({'n_bins': 2, 'bin_accuracy': [0.5, 'bad'], 'fitted': True}))
+    monkeypatch.setenv('CONTRACT_RISK_CALIBRATOR', str(p))
+
+    assert load_calibrator() is None
+    data = _island(generate_dashboard_html(_STATE))
+    assert data['reliability']['calibrated'] is False
+    assert all('calibratedScore' not in r['confidence'] for r in data['riskAssessment'])
+
+
 def test_attach_confidence_without_calibrator_is_unchanged():
     pb = load_playbook('default')
     risks = [{
