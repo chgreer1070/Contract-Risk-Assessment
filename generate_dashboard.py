@@ -657,32 +657,92 @@ def assess_risk_confidence(risk, source_clause, playbook_entry):
     }
 
 
-def attach_confidence(risks, clauses, playbook):
+# Optional post-hoc calibration. A calibrator is a JSON file produced by
+# ``python -m calibration.evaluate --fit --save-calibrator <path>`` once real
+# labeled data exists (see docs/confidence_calibration.md). It is applied here
+# with a self-contained histogram-binning lookup rather than importing the
+# calibration package, because this module is fetched standalone into Colab.
+# With no calibrator file present, behaviour is unchanged (raw scores only).
+CALIBRATOR_ENV = 'CONTRACT_RISK_CALIBRATOR'
+
+
+def load_calibrator(path=None):
+    """Return a calibrator dict ``{'n_bins', 'bin_accuracy'}`` or None.
+
+    Resolution order: explicit ``path`` -> ``$CONTRACT_RISK_CALIBRATOR`` ->
+    ``calibration/calibrator.json`` next to this module. Missing or malformed
+    files yield None so dashboard generation never fails because of calibration.
+    """
+    candidate = path or os.environ.get(CALIBRATOR_ENV) or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), 'calibration', 'calibrator.json')
+    if not os.path.isfile(candidate):
+        return None
+    try:
+        with open(candidate, encoding='utf-8') as f:
+            data = json.load(f)
+        n_bins = int(data['n_bins'])
+        bins = list(data['bin_accuracy'])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if n_bins < 1 or len(bins) != n_bins or not data.get('fitted', True):
+        return None
+    return {'n_bins': n_bins, 'bin_accuracy': bins}
+
+
+def calibrate_score(score, calibrator):
+    """Map a raw 0-1 confidence through a histogram-binning calibrator.
+
+    Mirrors ``calibration.calibrator.HistogramBinningCalibrator.predict`` (a
+    parity test keeps them in sync): the score's bin maps to that bin's learned
+    accuracy, or to the bin midpoint if the bin was never seen during fitting.
+    """
+    n = calibrator['n_bins']
+    c = min(1.0, max(0.0, float(score)))
+    i = min(n - 1, int(c * n))
+    learned = calibrator['bin_accuracy'][i]
+    if learned is None:
+        return round((i + 0.5) / n, 4)
+    return round(float(learned), 4)
+
+
+def attach_confidence(risks, clauses, playbook, calibrator=None):
     """Attach a ``confidence`` object to each risk; return an aggregate summary.
 
     Run after dedupe so the aggregate counts reflect the final risk set. The
     per-risk source clause and playbook entry are recomputed here (both are pure
     functions) to keep this pass independent of the reasoning/playbook passes.
+
+    When a ``calibrator`` is supplied, each confidence also gets a
+    ``calibratedScore`` and the summary reports ``meanCalibratedConfidence``.
+    The raw ``score`` and the review policy are left unchanged.
     """
     review_count = 0
     total = 0.0
+    total_cal = 0.0
     for r in risks:
         source = _find_source_clause(r, clauses)
         entry = match_playbook_entry(r, playbook)
         conf = assess_risk_confidence(r, source, entry)
+        if calibrator is not None:
+            conf['calibratedScore'] = calibrate_score(conf['score'], calibrator)
+            total_cal += conf['calibratedScore']
         r['confidence'] = conf
         total += conf['score']
         if conf['reviewRequired']:
             review_count += 1
     n = len(risks)
     mean = round(total / n, 2) if n else 1.0
-    return {
+    summary = {
         'riskCount': n,
         'reviewRequired': review_count,
         'meanConfidence': mean,
         'confidenceLevel': _confidence_level(mean),
         'autoAcceptable': n > 0 and review_count == 0,
+        'calibrated': calibrator is not None,
     }
+    if calibrator is not None:
+        summary['meanCalibratedConfidence'] = round(total_cal / n, 2) if n else 1.0
+    return summary
 
 
 # --- Contract metadata + timeline --------------------------------------------
@@ -806,7 +866,7 @@ def generate_dashboard_html(state):
 
     # Attach a deterministic confidence + human-review signal to each risk and
     # summarize how much of the assessment can be auto-accepted vs needs review.
-    reliability = attach_confidence(risks, clauses, playbook)
+    reliability = attach_confidence(risks, clauses, playbook, load_calibrator())
 
     overall_score = compute_risk_score(risks)
     metadata = _build_metadata(state)

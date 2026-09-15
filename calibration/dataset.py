@@ -48,10 +48,22 @@ def _iter_json_lines(path: str) -> Iterator[dict[str, object]]:
             yield obj
 
 
-def load_labeled(path: str) -> list[LabeledRecord]:
-    """Parse and validate a JSONL labeled dataset; raise on malformed rows."""
+def is_unlabeled(obj: dict[str, object]) -> bool:
+    """True for rows exported for labeling whose ``correct`` is still null."""
+    return obj.get('correct') is None
+
+
+def load_labeled(path: str, skip_unlabeled: bool = False) -> list[LabeledRecord]:
+    """Parse and validate a JSONL labeled dataset; raise on malformed rows.
+
+    With ``skip_unlabeled=True``, rows whose ``correct`` is null (exported by
+    ``calibration.export_labels`` but not yet reviewed) are ignored instead of
+    raising, so a partially-labeled file can still be evaluated.
+    """
     records: list[LabeledRecord] = []
     for obj in _iter_json_lines(path):
+        if skip_unlabeled and is_unlabeled(obj):
+            continue
         try:
             conf = float(cast(float, obj['predictedConfidence']))
             correct = int(cast(int, obj['correct']))
@@ -69,6 +81,10 @@ def load_labeled(path: str) -> list[LabeledRecord]:
             riskType=str(obj.get('riskType', '')),
         ))
     return records
+
+
+def count_unlabeled(path: str) -> int:
+    return sum(1 for obj in _iter_json_lines(path) if is_unlabeled(obj))
 
 
 def default_dataset_path() -> str:

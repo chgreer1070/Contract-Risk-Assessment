@@ -118,23 +118,48 @@ python -m calibration.evaluate --fit          # seed dataset, with before/after
 python -m calibration.evaluate --data calibration/data/mine.jsonl --bins 10
 ```
 
-## 7. Wiring calibration into the product (roadmap)
+## 7. The end-to-end loop (implemented)
 
-Once a calibrator is fit on real labels:
+```
+dashboard(s) ──export_labels──▶ labels.jsonl ──reviewer sets correct=1/0──▶
+  evaluate --fit --save-calibrator ──▶ calibration/calibrator.json ──▶
+  generate_dashboard.py applies it ──▶ confidence.calibratedScore in the data
+```
 
-1. Persist it (`HistogramBinningCalibrator.to_dict()` → JSON, versioned).
-2. In `generate_dashboard.py`, after `attach_confidence`, map each
-   `confidence.score` through the loaded calibrator and store both the raw and
-   calibrated values.
-3. Drive the **auto-accept / needs-review** threshold from the calibrated
-   probability and the accuracy target above.
-4. Re-fit on a schedule; monitor ECE drift in production sampling (§10 of the
-   architecture doc).
+1. **Collect labels:** `python -m calibration.export_labels <dashboard.html|analysis.json> -o labels.jsonl [--append --source <name>]`
+   writes one row per risk with `predictedConfidence` / `reviewRequired` filled
+   in, `correct: null`, and a `context` block (clause, level, rationale, quote,
+   confidence reasons) so a reviewer can judge it without opening the dashboard.
+2. **Label:** a reviewer sets `correct` to `1` or `0` per the rubric (§3.2).
+   Partially-labeled files are fine — `evaluate` skips `null` rows and reports
+   how many are pending.
+3. **Evaluate + fit:** `python -m calibration.evaluate --data labels.jsonl --fit --save-calibrator calibration/calibrator.json`
+   prints before/after metrics and persists the calibrator
+   (`HistogramBinningCalibrator.save`, versioned JSON).
+4. **Apply:** `generate_dashboard.load_calibrator()` looks for
+   `calibration/calibrator.json` next to the module, or `$CONTRACT_RISK_CALIBRATOR`.
+   When found, `attach_confidence` adds `confidence.calibratedScore` to every risk
+   and `reliability.meanCalibratedConfidence` / `reliability.calibrated = true`.
+   The raw `score` and the review policy are unchanged. When no file exists,
+   output is byte-for-byte identical to before — calibration is **dormant by
+   default**, so the Colab notebook (which fetches `generate_dashboard.py`
+   standalone) is unaffected.
+
+   The apply step uses a self-contained `calibrate_score` in
+   `generate_dashboard.py` rather than importing the package; a parity test
+   (`test_calibrate_score_matches_calibrator_predict`) keeps the two in sync.
+
+> Do **not** commit a calibrator fitted on the synthetic seed dataset; only
+> ship one fitted on real, held-out labels.
 
 ## 8. What ships now vs. later
 
-- **Now (this change):** dataset schema + loader, seed dataset, all metrics,
-  histogram-binning calibrator, evaluation CLI, tests, and a CI quality gate.
-- **Later (model/human-dependent):** real labeled data at scale, LLM-judge
-  agreement study, isotonic/conformal calibrators, and wiring the calibrated
-  score back into the dashboard threshold.
+- **Now:** dataset schema + loader (with unlabeled-row handling), seed dataset,
+  all metrics, histogram-binning calibrator (save/load), `evaluate` and
+  `export_labels` CLIs, dormant-by-default application in `generate_dashboard.py`,
+  tests, and a CI quality gate.
+- **Later (model/human-dependent):** real labeled data at scale, an LLM-judge
+  agreement study, isotonic/conformal calibrators, showing the calibrated score in
+  the dashboard UI, and driving the **auto-accept / needs-review** threshold from
+  the calibrated probability and the accuracy target (§6). Re-fit on a schedule
+  and monitor ECE drift via production sampling (architecture doc §10).
