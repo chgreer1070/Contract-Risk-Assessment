@@ -13,6 +13,7 @@ the v1 baseline the harness ships with.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from typing import cast
 
@@ -59,6 +60,17 @@ class HistogramBinningCalibrator:
 
     def to_dict(self) -> dict[str, object]:
         return {'n_bins': self.n_bins, 'bin_accuracy': self.bin_accuracy, 'fitted': self.fitted}
+
+    def save(self, path: str) -> None:
+        """Write the calibrator as JSON in the format ``generate_dashboard.load_calibrator`` reads."""
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(self.to_dict(), f, indent=2)
+            f.write('\n')
+
+    @classmethod
+    def load(cls, path: str) -> HistogramBinningCalibrator:
+        with open(path, encoding='utf-8') as f:
+            return cls.from_dict(json.load(f))
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> HistogramBinningCalibrator:

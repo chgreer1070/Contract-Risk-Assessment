@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 
 from calibration.calibrator import HistogramBinningCalibrator
-from calibration.dataset import default_dataset_path, load_labeled
+from calibration.dataset import count_unlabeled, default_dataset_path, load_labeled
 from calibration.metrics import (
     brier_score,
     expected_calibration_error,
@@ -44,10 +44,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument('--data', default=default_dataset_path(), help='JSONL labeled dataset')
     ap.add_argument('--bins', type=int, default=10, help='number of confidence bins')
     ap.add_argument('--fit', action='store_true', help='fit a calibrator and show after-metrics')
+    ap.add_argument('--save-calibrator', metavar='PATH',
+                    help='with --fit: write the fitted calibrator JSON here '
+                         '(generate_dashboard.py picks up calibration/calibrator.json)')
     args = ap.parse_args(argv)
 
-    records = load_labeled(args.data)
-    print(f'Loaded {len(records)} labeled records from {args.data}')
+    records = load_labeled(args.data, skip_unlabeled=True)
+    pending = count_unlabeled(args.data)
+    print(f'Loaded {len(records)} labeled records from {args.data}'
+          + (f' ({pending} unlabeled rows skipped)' if pending else ''))
+    if not records:
+        print('No labeled rows to evaluate.')
+        return 1
     pairs = [r.as_pair() for r in records]
 
     _report(pairs, args.bins, 'Raw confidence')
@@ -62,6 +70,11 @@ def main(argv: list[str] | None = None) -> int:
         cal = HistogramBinningCalibrator(n_bins=args.bins).fit(pairs)
         cal_pairs = [(cal.predict(c), y) for c, y in pairs]
         _report(cal_pairs, args.bins, 'Calibrated confidence (histogram binning)')
+        if args.save_calibrator:
+            cal.save(args.save_calibrator)
+            print(f'\nSaved calibrator to {args.save_calibrator}')
+    elif args.save_calibrator:
+        print('\n--save-calibrator requires --fit; nothing saved.')
 
     return 0
 
