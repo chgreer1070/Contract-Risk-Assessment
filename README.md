@@ -80,19 +80,38 @@ streamlit run app.py
 The dashboard bridge is pure Python and runs on CPU without a GPU, model, or network:
 
 ```bash
-pip install pytest
-pytest                 # unit tests for the generate_dashboard.py parsers
+pip install -r requirements-dev.txt
+ruff check .                                   # lint
+mypy generate_dashboard.py calibration         # types
+pytest --cov=generate_dashboard --cov-fail-under=90   # tests + coverage gate
 ```
 
-To render and screenshot the dashboard in a headless browser, use the bundled run
-skill (`.claude/skills/run-contract-risk-assessment/`):
+To render, assert, and accessibility-scan the dashboard in a headless browser,
+use the bundled run skill (`.claude/skills/run-contract-risk-assessment/`):
 
 ```bash
-npm install playwright chart.js
+npm install
 npx playwright install chromium
-node .claude/skills/run-contract-risk-assessment/smoke.mjs   # screenshots -> /tmp/shots/
+node .claude/skills/run-contract-risk-assessment/smoke.mjs   # render + assertions, screenshots -> /tmp/shots/
+node .claude/skills/run-contract-risk-assessment/a11y.mjs    # axe-core WCAG scan
 ```
 
-Both checks run automatically in CI (`.github/workflows/ci.yml`).
+All five checks run automatically in CI (`.github/workflows/ci.yml`). Agents:
+see `AGENTS.md` for conventions (CSP hash, escaping, determinism).
+
+### Confidence calibration
+
+The `calibration/` package measures whether confidence percentages are
+statistically trustworthy and can correct them once real labels exist
+(design: `docs/confidence_calibration.md`):
+
+```bash
+python -m calibration.export_labels dashboard.html -o labels.jsonl   # rows for a reviewer to mark correct 1/0
+python -m calibration.evaluate --data labels.jsonl --fit --save-calibrator calibration/calibrator.json
+```
+
+`generate_dashboard.py` applies `calibration/calibrator.json` (or
+`$CONTRACT_RISK_CALIBRATOR`) automatically when present, adding a
+`calibratedScore` beside each raw confidence; with no file, behaviour is unchanged.
 
 
