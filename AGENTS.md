@@ -17,6 +17,11 @@ An AI contract-risk assessment tool with two halves:
   matrix, playbooks, reasoning, citations, deterministic confidence + human-review
   flags), and injects JSON into `contract_visualization.html` (Chart.js, no build
   step). The `calibration/` package evaluates/corrects confidence trustworthiness.
+- **Local-model half (your GPU, no Colab):** `local_llm/` calls an
+  OpenAI-compatible server already running on the same machine (LM Studio
+  default `http://127.0.0.1:1234/v1`, or Ollama) using only the Python standard
+  library, then hands structured output to `generate_dashboard_html`. See
+  `docs/local_llm.md`. This is the AMD / Evo X3 path; it does not use CUDA.
 
 Important coupling: the notebook `wget`s `generate_dashboard.py`,
 `contract_visualization.html`, and `playbooks/` **standalone** from GitHub `main`.
@@ -31,6 +36,7 @@ import `calibration/` or `tests/`.
 | `contract_visualization.html` | dashboard template; embeds a `contract-data` JSON island + a CSP with a hashed inline script |
 | `playbooks/` | JSON negotiation playbooks (`default`, contract-type variants) |
 | `calibration/` | confidence-calibration harness (metrics, calibrator, dataset, `evaluate` + `export_labels` CLIs) |
+| `local_llm/` | local LM Studio / Ollama client + `python -m local_llm {ping,analyze}` |
 | `golden/` | answer-key regression fixtures |
 | `tests/` | pytest suite (parsers, scoring, playbooks, confidence, calibration, CSP hash, a11y markup) |
 | `docs/` | architecture + calibration design docs |
@@ -52,7 +58,7 @@ CPU loop.
 
 ```bash
 ruff check .                                                     # lint
-mypy generate_dashboard.py calibration                           # types
+mypy generate_dashboard.py calibration local_llm                 # types
 pytest --cov=generate_dashboard --cov-report=term-missing --cov-fail-under=90
 node .claude/skills/run-contract-risk-assessment/smoke.mjs       # renders + asserts the dashboard
 node .claude/skills/run-contract-risk-assessment/a11y.mjs        # 0 serious/critical axe violations
@@ -79,6 +85,9 @@ These are exactly the CI jobs. Everything runs on CPU with no network or model.
 - **Calibration:** `generate_dashboard.py` applies a calibrator only if
   `calibration/calibrator.json` (or `$CONTRACT_RISK_CALIBRATOR`) exists. Never
   commit a calibrator fitted on the synthetic seed dataset.
+- **Local LLM:** `local_llm/` must not be imported by `generate_dashboard.py`
+  (the notebook still fetches that file standalone). Tests for `local_llm` use a
+  stdlib HTTP stand-in — never call a real model in CI.
 
 ## Git workflow
 

@@ -14,6 +14,7 @@ This project automates contract analysis, risk assessment, and legal Q&A using s
 - **Visual Risk Dashboard**: 12 interactive charts (risk gauge, severity×likelihood heatmap, category radar, clause treemap, contract timeline, sortable actions table, and more) rendered from the analysis output.
 - **Confidence & Human Review**: Each risk carries a deterministic confidence score and a "needs review" flag (from citation verification, source-clause linkage, playbook coverage, field completeness, and mandatory escalation), with an aggregate summary of how much of the assessment is auto-acceptable vs. needs a human — supporting the human-oversight expectations of the EU AI Act / NIST AI RMF.
 - **Efficient Retrieval**: Uses hybrid chunking and Milvus vector database for precise legal text retrieval.
+- **Local model (your computer):** `python -m local_llm analyze contract.pdf` talks to **LM Studio** or **Ollama** on the same machine (AMD Evo X3 friendly — no NVIDIA / Colab required). Setup: `docs/local_llm.md`.
   
 
 ## 🛠️ Tech Stack
@@ -75,6 +76,10 @@ streamlit run app.py
 > `Finetuned_Model_for_Legal_Chatbot.ipynb` fine-tunes a Mistral-7B adapter with
 > Unsloth and 4-bit quantization, and `Contract_Risk_Assessment.ipynb` runs the
 > RAG + risk-assessment workflow and serves the Streamlit UI (via pyngrok on Colab).
+>
+> **Prefer your own computer (AMD Evo X3 / LM Studio)?** Skip the notebooks:
+> start LM Studio's local server, then `python -m local_llm analyze contract.pdf -o dashboard.html`.
+> Full click-by-click guide: [`docs/local_llm.md`](docs/local_llm.md).
 
 ## 🧪 Development & Testing
 The dashboard bridge is pure Python and runs on CPU without a GPU, model, or network:
@@ -82,7 +87,7 @@ The dashboard bridge is pure Python and runs on CPU without a GPU, model, or net
 ```bash
 pip install -r requirements-dev.txt
 ruff check .                                   # lint
-mypy generate_dashboard.py calibration         # types
+mypy generate_dashboard.py calibration local_llm  # types
 pytest --cov=generate_dashboard --cov-fail-under=90   # tests + coverage gate
 ```
 
