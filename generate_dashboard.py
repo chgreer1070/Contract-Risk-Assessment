@@ -860,20 +860,21 @@ def generate_dashboard_html(state):
     if not actions:
         actions = parse_recommended_actions(state.get('recommended_actions', ''))
 
-    # Apply the configurable playbook (action band + escalation) and attach the
-    # deterministic reasoning + verified source citation to each risk.
-    playbook = load_playbook(state.get('contract_type', 'default'))
-    _apply_playbook(risks, playbook)
-    _attach_reasoning(risks, clauses)
-
     # Collapse duplicate entries the LLM sometimes repeats (same clause/risk/
     # action emitted twice), then renumber clause ids so they stay sequential
-    # after any removals. Dedupe before scoring so repeats don't skew the mean.
+    # after any removals. Do this before citations are attached so cited IDs
+    # always point at the final clause list rendered in the dashboard.
     clauses = _dedupe(clauses, lambda c: _norm_key(c['clauseType'], c['extractedClause'], c['summary']))
     for i, c in enumerate(clauses, 1):
         c['id'] = f'KC-{i:03d}'
     risks = _dedupe(risks, lambda r: _norm_key(r['riskType'], r['clauseReference'], r['potentialConsequence']))
     actions = _dedupe(actions, lambda a: _norm_key(a['clause'], a['action']))
+
+    # Apply the configurable playbook (action band + escalation) and attach the
+    # deterministic reasoning + verified source citation to each risk.
+    playbook = load_playbook(state.get('contract_type', 'default'))
+    _apply_playbook(risks, playbook)
+    _attach_reasoning(risks, clauses)
 
     # Attach a deterministic confidence + human-review signal to each risk and
     # summarize how much of the assessment can be auto-accepted vs needs review.
