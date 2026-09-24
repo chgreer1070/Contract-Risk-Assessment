@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'sha384-U084sFL3ey5cLIiWdoJ81tSwx93Knizytu8RGs6GwIxx1TAQu+ePi2Bz0rFZEcON'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'sha384-0DBm+e7srqe4yFAAG0iPj5krWxrZvvJwJGK8uHUsb5QLnWKA2AjBirmrZuWTwVT6'">
     <title>Contract Risk Assessment Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
@@ -1939,7 +1939,7 @@ function renderClauseCards() {
   const html = CONTRACT_DATA.keyClauses.map(c => {
     const color = getRiskColor(c.riskImpact);
     const badgeClass = 'badge-' + c.riskImpact.toLowerCase();
-    const aria = esc(c.clauseType + ' clause' + (c.section ? ', ' + c.section : '') + ', ' + c.riskImpact + ' risk impact. Activate to expand details.');
+    const aria = escAttr(c.clauseType + ' clause' + (c.section ? ', ' + c.section : '') + ', ' + c.riskImpact + ' risk impact. Activate to expand details.');
     const riskTextVar = 'var(--risk-' + c.riskImpact.toLowerCase() + '-text)';
     const matched = risksForClause(c);
     let riskInfo = '';
@@ -1949,7 +1949,7 @@ function renderClauseCards() {
       riskInfo = '<div class="risk-why"><strong>Risk:</strong> ' + esc(worst.band || '') + (worst.rationale ? ' &middot; ' + esc(worst.rationale) : '') + '</div>'
         + (verified ? '<div class="risk-citation verified">Source verified</div>' : '');
     }
-    return '<div class="clause-card" role="button" tabindex="0" aria-expanded="false" aria-label="'+aria+'" data-risk="'+esc(c.riskImpact)+'" style="border-left-color:'+color+'"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem"><span class="badge" style="background:'+color+'22;color:'+riskTextVar+'">'+esc(c.clauseType)+'</span><span class="badge '+badgeClass+'">'+esc(c.riskImpact)+'</span></div><div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.4rem">'+esc(c.section)+'</div><div class="clause-text">'+esc(c.extractedClause)+'</div><div style="margin-top:0.5rem;font-size:0.85rem;font-style:italic;color:var(--text-secondary)">'+esc(c.summary)+'</div>'+riskInfo+'<div style="margin-top:0.4rem;font-size:0.7rem;color:var(--accent-text)">Activate to expand</div></div>';
+    return '<div class="clause-card" role="button" tabindex="0" aria-expanded="false" aria-label="'+aria+'" data-risk="'+escAttr(c.riskImpact)+'" style="border-left-color:'+color+'"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem"><span class="badge" style="background:'+color+'22;color:'+riskTextVar+'">'+esc(c.clauseType)+'</span><span class="badge '+badgeClass+'">'+esc(c.riskImpact)+'</span></div><div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.4rem">'+esc(c.section)+'</div><div class="clause-text">'+esc(c.extractedClause)+'</div><div style="margin-top:0.5rem;font-size:0.85rem;font-style:italic;color:var(--text-secondary)">'+esc(c.summary)+'</div>'+riskInfo+'<div style="margin-top:0.4rem;font-size:0.7rem;color:var(--accent-text)">Activate to expand</div></div>';
   }).join('');
   document.getElementById('clauseCards').innerHTML = html;
 }
@@ -2015,7 +2015,7 @@ function renderTreemap() {
     const w = (it.count / topTotal) * W;
     const h = H * 0.55;
     const hue = 120 - (it.avgScore / 10) * 120;
-    html += '<div class="treemap-item" style="left:'+x+'px;top:0;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',60%,32%,0.95)" title="'+esc(it.name)+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+esc(it.name)+'</span><span style="font-size:0.75rem">'+it.count+' risks</span></div>';
+    html += '<div class="treemap-item" style="left:'+x+'px;top:0;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',60%,32%,0.95)" title="'+escAttr(it.name)+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+esc(it.name)+'</span><span style="font-size:0.75rem">'+it.count+' risks</span></div>';
     x += w;
   });
   x = 0;
@@ -2023,7 +2023,7 @@ function renderTreemap() {
     const w = (it.count / botTotal) * W;
     const h = H * 0.45;
     const hue = 120 - (it.avgScore / 10) * 120;
-    html += '<div class="treemap-item" style="left:'+x+'px;top:'+(H*0.55)+'px;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',60%,32%,0.95)" title="'+esc(it.name)+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+esc(it.name)+'</span><span style="font-size:0.75rem">'+it.count+' risks</span></div>';
+    html += '<div class="treemap-item" style="left:'+x+'px;top:'+(H*0.55)+'px;width:'+w+'px;height:'+h+'px;background:hsla('+hue+',60%,32%,0.95)" title="'+escAttr(it.name)+': '+it.count+' risks, avg score '+it.avgScore.toFixed(1)+'"><span>'+esc(it.name)+'</span><span style="font-size:0.75rem">'+it.count+' risks</span></div>';
     x += w;
   });
   container.innerHTML = html;
@@ -2066,7 +2066,7 @@ function renderActionsTable() {
   const html = CONTRACT_DATA.recommendedActions.map(a => {
     const pClass = a.priority === 'Urgent' ? 'priority-urgent' : a.priority === 'High' ? 'priority-high-p' : a.priority === 'Medium' ? 'priority-medium-p' : 'priority-low-p';
     const badgeClass = 'badge-' + a.riskLevel.toLowerCase();
-    return '<tr data-risk="'+esc(a.riskLevel)+'"><td><span class="priority-dot '+pClass+'"></span>'+esc(a.priority)+'</td><td>'+esc(a.clause)+'</td><td><span class="badge '+badgeClass+'">'+esc(a.riskLevel)+'</span></td><td>'+esc(a.action)+'</td><td><span class="badge" style="background:rgba(59,130,246,0.12);color:var(--accent-text)">'+esc(a.category)+'</span></td></tr>';
+    return '<tr data-risk="'+escAttr(a.riskLevel)+'"><td><span class="priority-dot '+pClass+'"></span>'+esc(a.priority)+'</td><td>'+esc(a.clause)+'</td><td><span class="badge '+badgeClass+'">'+esc(a.riskLevel)+'</span></td><td>'+esc(a.action)+'</td><td><span class="badge" style="background:rgba(59,130,246,0.12);color:var(--accent-text)">'+esc(a.category)+'</span></td></tr>';
   }).join('');
   document.getElementById('actionsBody').innerHTML = html;
 }

@@ -230,6 +230,42 @@ async function main() {
   });
   console.log(`Section boundary matching: ${sectionBoundaryOk ? 'PASS' : 'FAIL'}`);
 
+  const attributeEscapingOk = await page.evaluate(() => {
+    const originalClauses = CONTRACT_DATA.keyClauses;
+    const originalRisks = CONTRACT_DATA.riskAssessment;
+    try {
+      const dangerousType = 'Bad" data-clause-injected="yes';
+      CONTRACT_DATA.keyClauses = [
+        {
+          id: 'KC-XSS',
+          clauseType: dangerousType,
+          section: 'Section 99',
+          extractedClause: 'Quoted clause text.',
+          summary: 'Summary.',
+          riskImpact: 'High',
+        },
+      ];
+      CONTRACT_DATA.riskAssessment = [];
+      renderClauseCards();
+      renderTreemap();
+
+      const clauseCard = document.querySelector('.clause-card');
+      const treemapItem = document.querySelector('.treemap-item');
+      return clauseCard
+        && treemapItem
+        && clauseCard.getAttribute('aria-label').includes(dangerousType)
+        && !clauseCard.hasAttribute('data-clause-injected')
+        && treemapItem.getAttribute('title').includes(dangerousType)
+        && !treemapItem.hasAttribute('data-clause-injected');
+    } finally {
+      CONTRACT_DATA.keyClauses = originalClauses;
+      CONTRACT_DATA.riskAssessment = originalRisks;
+      renderClauseCards();
+      renderTreemap();
+    }
+  });
+  console.log(`Attribute escaping: ${attributeEscapingOk ? 'PASS' : 'FAIL'}`);
+
   // Check for console errors
   const errors = [];
   page.on('pageerror', err => errors.push(err.message));
@@ -243,7 +279,7 @@ async function main() {
   server.close();
 
   // Summary
-  const allGood = stats.length === 6 && clauses.length === 8 && canvases.length === 5 && pipelineNodes.length === 5 && riskTableOk && sectionBoundaryOk && reliabilityOk && reviewFilterOk;
+  const allGood = stats.length === 6 && clauses.length === 8 && canvases.length === 5 && pipelineNodes.length === 5 && riskTableOk && sectionBoundaryOk && attributeEscapingOk && reliabilityOk && reviewFilterOk;
   console.log(`\n${allGood ? 'ALL CHECKS PASSED' : 'SOME CHECKS FAILED'}`);
   process.exit(allGood ? 0 : 1);
 }
