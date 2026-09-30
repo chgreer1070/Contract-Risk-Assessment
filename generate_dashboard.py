@@ -403,6 +403,27 @@ def _dedupe(items, keyfn):
     return out
 
 
+def _dedupe_risks_by_highest_score(risks):
+    """Collapse repeated risks, keeping the highest-severity assessment."""
+    indexes = {}
+    out = []
+    for risk in risks:
+        key = _norm_key(risk['riskType'], risk['clauseReference'], risk['potentialConsequence'])
+        rank = (risk.get('score', 0), RISK_LEVEL_WEIGHTS.get(risk.get('riskLevel'), 1))
+        if key in indexes:
+            existing = out[indexes[key]]
+            existing_rank = (
+                existing.get('score', 0),
+                RISK_LEVEL_WEIGHTS.get(existing.get('riskLevel'), 1),
+            )
+            if rank > existing_rank:
+                out[indexes[key]] = risk
+            continue
+        indexes[key] = len(out)
+        out.append(risk)
+    return out
+
+
 def compute_risk_score(risks):
     """Compute overall 0-10 risk score from parsed risks (flat mean)."""
     if not risks:
@@ -872,7 +893,7 @@ def generate_dashboard_html(state):
     clauses = _dedupe(clauses, lambda c: _norm_key(c['clauseType'], c['extractedClause'], c['summary']))
     for i, c in enumerate(clauses, 1):
         c['id'] = f'KC-{i:03d}'
-    risks = _dedupe(risks, lambda r: _norm_key(r['riskType'], r['clauseReference'], r['potentialConsequence']))
+    risks = _dedupe_risks_by_highest_score(risks)
     actions = _dedupe(actions, lambda a: _norm_key(a['clause'], a['action']))
 
     # Attach a deterministic confidence + human-review signal to each risk and
