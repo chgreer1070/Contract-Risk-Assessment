@@ -92,3 +92,37 @@ def test_generated_html_risks_carry_reasoning_and_verified_citations():
     r = json.loads(m.group(1))['riskAssessment'][0]
     assert r['rationale'] and r['band']
     assert r['citations'][0]['verified'] is True
+
+
+def test_generated_html_citation_ids_survive_clause_dedupe():
+    state = {
+        'key_clauses': '',
+        'recommended_actions': '',
+        'key_clauses_data': [
+            {'clauseType': 'Intro', 'section': '', 'extractedClause': 'This agreement starts today.',
+             'summary': 'Duplicate intro'},
+            {'clauseType': 'Intro', 'section': '', 'extractedClause': 'This agreement starts today.',
+             'summary': 'Duplicate intro'},
+            {'clauseType': 'Payment', 'section': '', 'extractedClause': 'Customer must pay invoices within 10 days.',
+             'summary': 'Payment terms'},
+            {'clauseType': 'Confidentiality', 'section': '', 'extractedClause': 'Each party must protect secrets.',
+             'summary': 'Confidentiality terms'},
+        ],
+        'risk_assessment_data': [
+            {'riskType': 'Payment', 'clauseReference': 'payment terms', 'riskLevel': 'High',
+             'likelihood': 'Likely', 'potentialConsequence': 'Cash collection can fail.'},
+        ],
+    }
+    html = generate_dashboard_html(state)
+    m = re.search(
+        r'<script type="application/json" id="contract-data">\n(.*?)\n</script>',
+        html, re.DOTALL,
+    )
+    data = json.loads(m.group(1))
+
+    assert [(c['id'], c['clauseType']) for c in data['keyClauses']] == [
+        ('KC-001', 'Intro'),
+        ('KC-002', 'Payment'),
+        ('KC-003', 'Confidentiality'),
+    ]
+    assert data['riskAssessment'][0]['citations'][0]['clauseId'] == 'KC-002'
