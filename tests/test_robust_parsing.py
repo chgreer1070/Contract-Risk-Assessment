@@ -179,6 +179,26 @@ def test_duplicate_risks_collapsed_before_scoring():
     assert len(data['riskAssessment']) == 1
 
 
+def test_duplicate_risks_keep_highest_score():
+    state = {
+        'key_clauses': '', 'recommended_actions': '',
+        'risk_assessment_data': [
+            {'riskType': 'Liability', 'clauseReference': 'Section 8.1', 'riskLevel': 'Medium',
+             'likelihood': 'Possible', 'potentialConsequence': 'Unrecoverable losses.'},
+            {'riskType': 'Liability', 'clauseReference': 'Section 8.1', 'riskLevel': 'High',
+             'likelihood': 'Likely', 'potentialConsequence': 'Unrecoverable losses.'},
+        ],
+    }
+    data = _extract_contract_data(generate_dashboard_html(state))
+
+    assert len(data['riskAssessment']) == 1
+    risk = data['riskAssessment'][0]
+    assert risk['riskLevel'] == 'High'
+    assert risk['likelihood'] == 'Likely'
+    assert risk['score'] == 9
+    assert data['overallRiskScore'] == 9.0
+
+
 def test_duplicate_actions_collapsed():
     state = {
         'key_clauses': '', 'risk_assessment_report': '',
