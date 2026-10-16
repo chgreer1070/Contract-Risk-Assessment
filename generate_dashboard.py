@@ -88,7 +88,11 @@ _LEVEL_LOW = ('very low', 'low', 'minor', 'negligible', 'minimal', 'immaterial',
               'trivial', 'nominal', 'insignificant', 'slight')
 _LEVEL_MEDIUM = ('medium', 'moderate', 'average', 'intermediate')
 
-_LIKE_UNLIKELY = ('unlikely', 'rare', 'improbable', 'seldom', 'remote', 'doubtful')
+_LIKE_UNLIKELY = (
+    'unlikely', 'not likely', 'less likely', 'rare', 'improbable', 'not probable',
+    'seldom', 'remote', 'doubtful', 'not expected', 'not anticipated',
+    'not foreseeable', 'not foreseen',
+)
 _LIKE_LIKELY = ('likely', 'probable', 'certain', 'frequent', 'expected',
                 'anticipated', 'foreseeable', 'foreseen', 'often')
 _LIKE_POSSIBLE = ('possible', 'occasional', 'conceivable', 'sometimes')

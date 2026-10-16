@@ -74,6 +74,17 @@ def test_canon_likelihood_improbable_not_read_as_likely():
     assert _canon_likelihood('improbable') == 'Unlikely'
 
 
+@pytest.mark.parametrize('raw', [
+    'not likely',
+    'not probable',
+    'less likely',
+    'not expected',
+    'not foreseeable',
+])
+def test_canon_likelihood_negated_likely_phrases_are_unlikely(raw):
+    assert _canon_likelihood(raw) == 'Unlikely'
+
+
 # --------------------------------------------------------------------------- #
 # En / em dash field separators
 # --------------------------------------------------------------------------- #
@@ -197,6 +208,43 @@ def test_duplicate_risks_keep_highest_score():
     assert risk['likelihood'] == 'Likely'
     assert risk['score'] == 9
     assert data['overallRiskScore'] == 9.0
+
+
+def test_negated_likelihood_does_not_inflate_dashboard_score():
+    state = {
+        'key_clauses': '',
+        'recommended_actions': '',
+        'risk_assessment_report': (
+            "- **Risk Type**: Liability\n"
+            "- **Clause Reference**: Section 8.1\n"
+            "- **Risk Level**: High\n"
+            "- **Likelihood**: Not likely\n"
+            "- **Potential Consequence**: Major uncapped exposure.\n"
+        ),
+    }
+    data = _extract_contract_data(generate_dashboard_html(state))
+
+    risk = data['riskAssessment'][0]
+    assert risk['likelihood'] == 'Unlikely'
+    assert risk['score'] == 6
+    assert risk['band'] == 'Negotiate'
+    assert data['overallRiskScore'] == 6.0
+
+
+def test_negated_likelihood_structured_input_does_not_inflate_score():
+    state = {
+        'key_clauses': '',
+        'recommended_actions': '',
+        'risk_assessment_data': [
+            {'riskType': 'Liability', 'clauseReference': 'Section 8.1', 'riskLevel': 'High',
+             'likelihood': 'not probable', 'potentialConsequence': 'Major uncapped exposure.'},
+        ],
+    }
+    data = _extract_contract_data(generate_dashboard_html(state))
+
+    risk = data['riskAssessment'][0]
+    assert risk['likelihood'] == 'Unlikely'
+    assert risk['score'] == 6
 
 
 def test_duplicate_actions_collapsed():
