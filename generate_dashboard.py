@@ -87,6 +87,14 @@ _LEVEL_HIGH = ('critical', 'severe', 'very high', 'high', 'extreme',
 _LEVEL_LOW = ('very low', 'low', 'minor', 'negligible', 'minimal', 'immaterial',
               'trivial', 'nominal', 'insignificant', 'slight')
 _LEVEL_MEDIUM = ('medium', 'moderate', 'average', 'intermediate')
+_LEVEL_NEGATED_HIGH = (
+    'not significant', 'no significant',
+    'not substantial', 'no substantial',
+    'not material', 'no material',
+    'not major', 'no major',
+    'not serious', 'no serious',
+    'not critical', 'no critical',
+)
 
 _LIKE_UNLIKELY = ('unlikely', 'rare', 'improbable', 'seldom', 'remote', 'doubtful')
 _LIKE_LIKELY = ('likely', 'probable', 'certain', 'frequent', 'expected',
@@ -107,6 +115,8 @@ def _canon_level(value, default='Medium'):
     # Low first so negations like 'insignificant' or 'very low' win over the
     # High/Medium tokens they contain.
     if _has_word(s, _LEVEL_LOW):
+        return 'Low'
+    if _has_word(s, _LEVEL_NEGATED_HIGH):
         return 'Low'
     if _has_word(s, _LEVEL_HIGH):
         return 'High'
