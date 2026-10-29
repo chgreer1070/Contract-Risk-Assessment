@@ -180,6 +180,38 @@ def test_extract_json_object_from_prose():
     assert extract_json_object(raw)['title'] == 'MSA'
 
 
+def test_extract_json_object_keeps_object_when_later_prose_has_braces():
+    """A valid object must survive a later brace note such as {YYYY-MM-DD}."""
+    raw = (
+        '{"title": "MSA", "effectiveDate": "2025-01-01", "parties": ["Acme"]}\n'
+        'Note: dates use {YYYY-MM-DD}.'
+    )
+    data = extract_json_object(raw)
+    assert data['title'] == 'MSA'
+    assert data['effectiveDate'] == '2025-01-01'
+    assert data['parties'] == ['Acme']
+
+
+def test_extract_json_list_keeps_array_when_later_prose_has_brackets():
+    """A valid array must survive a later stray } ] that a greedy match would swallow."""
+    raw = '[{"clauseType": "Liability", "summary": "Cap"}] trailing } ]'
+    items = extract_json_list(raw)
+    assert items == [{'clauseType': 'Liability', 'summary': 'Cap'}]
+
+
+def test_extract_json_list_skips_an_earlier_empty_array():
+    raw = 'If none, return [].\n[{"clauseType": "Termination", "summary": "Notice"}]'
+    items = extract_json_list(raw)
+    assert items[0]['clauseType'] == 'Termination'
+
+
+def test_extract_json_list_finds_objects_nested_in_another_array():
+    wrapped = '[[{"clauseType": "Liability", "summary": "Cap"}]]'
+    assert extract_json_list(wrapped) == [{'clauseType': 'Liability', 'summary': 'Cap'}]
+    mixed = '[[], [{"clauseType": "Termination", "summary": "Notice"}]]'
+    assert extract_json_list(mixed) == [{'clauseType': 'Termination', 'summary': 'Notice'}]
+
+
 def test_markdown_helpers_roundtrip_keys():
     assert 'Limitation of Liability' in clauses_to_md(_CLAUSES)
     assert 'Section 8.1' in risks_to_md(_RISKS)
