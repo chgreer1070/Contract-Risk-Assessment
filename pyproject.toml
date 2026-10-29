@@ -28,7 +28,10 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.coverage.run]
-source = ["generate_dashboard"]
+source = ["generate_dashboard", "local_llm", "calibration"]
 
 [tool.coverage.report]
 show_missing = true
+# Measured total is 95.62% (the table rounds that to 96). 95 is the
+# floor where the summary and the process exit code both say it passed.
+fail_under = 95
