@@ -306,5 +306,17 @@ def test_cli_ping_and_analyze(tmp_path, standin):
     assert 'Limitation of Liability' in html
 
 
+def test_cli_analyze_rejects_output_over_input(tmp_path, standin):
+    src = tmp_path / 'msa.txt'
+    original = 'Section 8.1 Liability is capped at fees paid.'
+    src.write_text(original)
+
+    assert cli_main([
+        'analyze', str(src), '-o', str(src),
+        '--base-url', standin, '--model', 'stand-in-model', '--timeout', '5',
+    ]) == 2
+    assert src.read_text(encoding='utf-8') == original
+
+
 def test_cli_analyze_missing_file_is_error():
     assert cli_main(['analyze', '/no/such/contract.txt']) == 1

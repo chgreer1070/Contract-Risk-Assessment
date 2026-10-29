@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from local_llm.client import LocalLLMError, list_models, resolve_endpoint
@@ -35,8 +36,20 @@ def _cmd_ping(args: argparse.Namespace) -> int:
     return 0
 
 
+def _same_path(left: str, right: str) -> bool:
+    """Return True when two CLI paths point at the same filesystem target."""
+    try:
+        return os.path.samefile(left, right)
+    except OSError:
+        return os.path.realpath(left) == os.path.realpath(right)
+
+
 def _cmd_analyze(args: argparse.Namespace) -> int:
     from generate_dashboard import generate_dashboard_html
+
+    if _same_path(args.input, args.output):
+        print('Error: --output must be different from the input contract path.', file=sys.stderr)
+        return 2
 
     state = analyze_contract(
         args.input,
