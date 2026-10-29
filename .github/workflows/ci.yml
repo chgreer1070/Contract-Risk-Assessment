@@ -44,7 +44,7 @@ jobs:
       - name: Install dev tools
         run: pip install -r requirements-dev.txt
       - name: Run tests with coverage gate
-        run: pytest --cov=generate_dashboard --cov-report=term-missing --cov-fail-under=90
+        run: pytest --cov=generate_dashboard --cov=local_llm --cov=calibration --cov-report=term-missing --cov-fail-under=95
 
   dashboard-smoke:
     name: Dashboard render smoke test

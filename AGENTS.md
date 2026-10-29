@@ -59,7 +59,7 @@ CPU loop.
 ```bash
 ruff check .                                                     # lint
 mypy generate_dashboard.py calibration local_llm                 # types
-pytest --cov=generate_dashboard --cov-report=term-missing --cov-fail-under=90
+pytest --cov=generate_dashboard --cov=local_llm --cov=calibration --cov-report=term-missing --cov-fail-under=95
 node .claude/skills/run-contract-risk-assessment/smoke.mjs       # renders + asserts the dashboard
 node .claude/skills/run-contract-risk-assessment/a11y.mjs        # 0 serious/critical axe violations
 ```

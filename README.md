@@ -88,7 +88,7 @@ The dashboard bridge is pure Python and runs on CPU without a GPU, model, or net
 pip install -r requirements-dev.txt
 ruff check .                                   # lint
 mypy generate_dashboard.py calibration local_llm  # types
-pytest --cov=generate_dashboard --cov-fail-under=90   # tests + coverage gate
+pytest --cov=generate_dashboard --cov=local_llm --cov=calibration --cov-fail-under=95   # tests + coverage gate
 ```
 
 To render, assert, and accessibility-scan the dashboard in a headless browser,
