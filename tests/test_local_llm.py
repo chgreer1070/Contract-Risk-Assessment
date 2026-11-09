@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -274,16 +275,32 @@ def test_cli_ping_and_analyze(tmp_path, standin):
     assert 'Limitation of Liability' in html
 
 
-def test_cli_analyze_rejects_output_over_input(tmp_path, standin):
+def test_cli_analyze_leaves_input_file_byte_identical(tmp_path, standin, capsys):
+    """Running analyze must not change the contract file, even if output points at it."""
     src = tmp_path / 'msa.txt'
-    original = 'Section 8.1 Liability is capped at fees paid.'
-    src.write_text(original)
+    original = b'Section 8.1 Liability is capped at fees paid.\n'
+    src.write_bytes(original)
+    before = hashlib.sha256(src.read_bytes()).hexdigest()
+
+    out = tmp_path / 'dashboard.html'
+    assert cli_main([
+        'analyze', str(src), '-o', str(out),
+        '--base-url', standin, '--model', 'stand-in-model', '--timeout', '5',
+    ]) == 0
+    capsys.readouterr()
+    after_success = hashlib.sha256(src.read_bytes()).hexdigest()
+    assert after_success == before
+    assert src.read_bytes() == original
+    assert 'Limitation of Liability' in out.read_text(encoding='utf-8')
 
     assert cli_main([
         'analyze', str(src), '-o', str(src),
         '--base-url', standin, '--model', 'stand-in-model', '--timeout', '5',
     ]) == 2
-    assert src.read_text(encoding='utf-8') == original
+    assert 'must be different' in capsys.readouterr().err
+    after_reject = hashlib.sha256(src.read_bytes()).hexdigest()
+    assert after_reject == before
+    assert src.read_bytes() == original
 
 
 def test_cli_analyze_missing_file_is_error():
