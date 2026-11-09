@@ -82,8 +82,11 @@ def _field(label, block, multiline=False):
 # Real LLM output phrases these many ways; matching on whole words (see
 # _has_word) avoids substring traps like 'insignificant' containing
 # 'significant', or 'improbable' containing 'probable'.
+# 'material' is a high-severity stem, same band as 'significant'. Negated forms
+# are built in _NEGATED_PHRASES so they do not raise the score.
 _LEVEL_HIGH = ('critical', 'severe', 'very high', 'high', 'extreme',
-               'significant', 'substantial', 'major', 'serious', 'grave', 'elevated')
+               'significant', 'substantial', 'major', 'serious', 'grave', 'elevated',
+               'material')
 _LEVEL_LOW = ('very low', 'low', 'minor', 'negligible', 'minimal', 'immaterial',
               'trivial', 'nominal', 'insignificant', 'slight')
 _LEVEL_MEDIUM = ('medium', 'moderate', 'average', 'intermediate')
@@ -93,17 +96,53 @@ _LIKE_LIKELY = ('likely', 'probable', 'certain', 'frequent', 'expected',
                 'anticipated', 'foreseeable', 'foreseen', 'often')
 _LIKE_POSSIBLE = ('possible', 'occasional', 'conceivable', 'sometimes')
 
+# Prefixes that cancel the positive stem that follows. 'not a' is its own prefix
+# so 'not a material' is removed whole. Longest phrases are matched first.
+_NEGATION_PREFIXES = ('not a', 'not', 'no', 'non', 'less', 'never', 'without')
+_NEGATION_EXTRAS = ('no material risk', 'not a material risk', 'unlikely', 'un likely')
+
+
+def _build_negated_phrases():
+    """Every negated form of a positive likelihood or severity stem."""
+    stems = tuple(dict.fromkeys((*_LEVEL_HIGH, *_LIKE_LIKELY)))
+    phrases = {f'{prefix} {stem}' for stem in stems for prefix in _NEGATION_PREFIXES}
+    phrases.update(_NEGATION_EXTRAS)
+    return tuple(sorted(phrases, key=len, reverse=True))
+
+
+_NEGATED_PHRASES = _build_negated_phrases()
+_NEGATED_RES = tuple(re.compile(r'\b' + re.escape(phrase) + r'\b') for phrase in _NEGATED_PHRASES)
+# A field that is only the canonical label, plus surrounding punctuation.
+_BARE_UNLIKELY_RE = re.compile(r'^\W*unlikely\W*$', re.IGNORECASE)
+
 
 def _has_word(text, words):
     """True if any of ``words`` appears as a whole word in ``text``."""
     return any(re.search(r'\b' + re.escape(w) + r'\b', text) for w in words)
 
 
+def _scoring_text(value):
+    """Lowercase ``value``, flatten separators, and drop negated phrases.
+
+    Hyphens and dashes become spaces, and repeated whitespace collapses, so
+    'not-likely' and 'not  likely' are the same phrase as 'not likely'. What
+    remains is what likelihood and severity are scored from: the same result as
+    the clause with those phrases deleted. A field whose whole value is the
+    label 'unlikely' is handled before this runs.
+    """
+    cleaned = value.lower()
+    cleaned = re.sub(r'[\u2010-\u2015\-]+', ' ', cleaned)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    for pattern in _NEGATED_RES:
+        cleaned = pattern.sub(' ', cleaned)
+    return cleaned
+
+
 def _canon_level(value, default='Medium'):
     """Normalize a risk level / impact to one of High / Medium / Low."""
     if not value:
         return default
-    s = value.lower()
+    s = _scoring_text(value)
     # Low first so negations like 'insignificant' or 'very low' win over the
     # High/Medium tokens they contain.
     if _has_word(s, _LEVEL_LOW):
@@ -119,8 +158,11 @@ def _canon_likelihood(value, default='Possible'):
     """Normalize a likelihood to one of Unlikely / Possible / Likely."""
     if not value:
         return default
-    s = value.lower()
-    # 'unlikely' contains 'likely' — check the negatives first.
+    if _BARE_UNLIKELY_RE.match(str(value).strip()):
+        return 'Unlikely'
+    # 'unlikely' contains 'likely' — check the negatives first, after negated
+    # phrases have been removed so a leftover positive stem cannot win.
+    s = _scoring_text(value)
     if _has_word(s, _LIKE_UNLIKELY):
         return 'Unlikely'
     if _has_word(s, _LIKE_LIKELY):

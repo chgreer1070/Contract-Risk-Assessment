@@ -1,0 +1,99 @@
+{
+  "id": "positive-unnegated-phrase",
+  "name": "positive-unnegated-phrase",
+  "state": {
+    "contract_type": "default",
+    "key_clauses_data": [
+      {
+        "clauseType": "Operations",
+        "section": "Section 5.1",
+        "extractedClause": "The supplier sends a written status note each month and the draft says here.",
+        "summary": "Status note."
+      },
+      {
+        "clauseType": "Operations",
+        "section": "Section 5.2",
+        "extractedClause": "The supplier sends a written status note each month and the draft says likely here.",
+        "summary": "Status note."
+      },
+      {
+        "clauseType": "Operations",
+        "section": "Section 5.3",
+        "extractedClause": "The supplier sends a written status note each month and the draft says significant here.",
+        "summary": "Status note."
+      },
+      {
+        "clauseType": "Operations",
+        "section": "Section 5.4",
+        "extractedClause": "The supplier sends a written status note each month and the draft says material here.",
+        "summary": "Status note."
+      }
+    ],
+    "risk_assessment_data": [
+      {
+        "riskType": "Operational",
+        "clauseReference": "Section 5.1",
+        "riskLevel": "The supplier sends a written status note each month and the draft says here.",
+        "likelihood": "The supplier sends a written status note each month and the draft says here.",
+        "potentialConsequence": "A short status note."
+      },
+      {
+        "riskType": "Operational",
+        "clauseReference": "Section 5.2",
+        "riskLevel": "The supplier sends a written status note each month and the draft says likely here.",
+        "likelihood": "The supplier sends a written status note each month and the draft says likely here.",
+        "potentialConsequence": "A short status note."
+      },
+      {
+        "riskType": "Operational",
+        "clauseReference": "Section 5.3",
+        "riskLevel": "The supplier sends a written status note each month and the draft says significant here.",
+        "likelihood": "The supplier sends a written status note each month and the draft says significant here.",
+        "potentialConsequence": "A short status note."
+      },
+      {
+        "riskType": "Operational",
+        "clauseReference": "Section 5.4",
+        "riskLevel": "The supplier sends a written status note each month and the draft says material here.",
+        "likelihood": "The supplier sends a written status note each month and the draft says material here.",
+        "potentialConsequence": "A short status note."
+      }
+    ],
+    "recommended_actions": ""
+  },
+  "expect": {
+    "clauseCount": 4,
+    "weightedRiskScore": 7.0,
+    "allCitationsVerified": true,
+    "risks": [
+      {
+        "clauseReference": "Section 5.1",
+        "riskLevel": "Medium",
+        "likelihood": "Possible",
+        "score": 5,
+        "band": "Negotiate"
+      },
+      {
+        "clauseReference": "Section 5.2",
+        "riskLevel": "Medium",
+        "likelihood": "Likely",
+        "score": 6,
+        "band": "Negotiate"
+      },
+      {
+        "clauseReference": "Section 5.3",
+        "riskLevel": "High",
+        "likelihood": "Possible",
+        "score": 8,
+        "band": "Escalate"
+      },
+      {
+        "clauseReference": "Section 5.4",
+        "riskLevel": "High",
+        "likelihood": "Possible",
+        "score": 8,
+        "band": "Escalate"
+      }
+    ]
+  }
+}
