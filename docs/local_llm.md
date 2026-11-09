@@ -89,5 +89,9 @@ Ollama's OpenAI-compatible URL is `http://127.0.0.1:11434/v1`.
 - **0 clauses / 0 risks** — the model replied in prose instead of JSON. Load a
   stronger instruct model and retry; the tool already strips markdown fences
   when it can.
+- **"output must be different from the input contract path"** — the dashboard
+  has to be a different file. The command stops before it reads or writes if
+  `-o` is the contract itself, another spelling of that path, a shortcut to it,
+  or a second name for the same file. The contract file is left unchanged.
 - **Slow / out of memory** — pick a smaller model (14B instead of 32B) or close
   other GPU-heavy apps.

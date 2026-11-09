@@ -48,7 +48,9 @@ jobs:
 
   dashboard-smoke:
     name: Dashboard render smoke test
-    runs-on: ubuntu-latest
+    # Playwright 1.60 has no Chromium build for Ubuntu 26.04, which is what
+    # ubuntu-latest is moving to. 24.04 is the newest image this version supports.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -63,7 +65,8 @@ jobs:
 
   accessibility:
     name: Accessibility (axe-core) scan
-    runs-on: ubuntu-latest
+    # Same runner pin as the smoke job: Playwright 1.60 cannot install Chromium on Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

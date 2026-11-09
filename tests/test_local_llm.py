@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
 
@@ -304,6 +306,62 @@ def test_cli_ping_and_analyze(tmp_path, standin):
     html = out.read_text(encoding='utf-8')
     assert 'contract-data' in html
     assert 'Limitation of Liability' in html
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_cli_analyze_leaves_input_file_byte_identical(tmp_path, standin, capsys, monkeypatch):
+    """Running analyze must not change the contract file, even if output points at it."""
+    src = tmp_path / 'msa.txt'
+    original = b'Section 8.1 Liability is capped at fees paid.\n'
+    src.write_bytes(original)
+    before = _sha256(src)
+
+    def run(input_path: str, output_path: str | None = None) -> int:
+        args = [
+            'analyze', input_path,
+            '--base-url', standin, '--model', 'stand-in-model', '--timeout', '5',
+        ]
+        if output_path is not None:
+            args.extend(['-o', output_path])
+        return cli_main(args)
+
+    def assert_refused(input_path: str, output_path: str | None, contract: Path) -> None:
+        digest = _sha256(contract)
+        assert run(input_path, output_path) == 2
+        assert 'must be different' in capsys.readouterr().err
+        assert _sha256(contract) == digest
+        assert contract.read_bytes() == original
+
+    out = tmp_path / 'dashboard.html'
+    assert run(str(src), str(out)) == 0
+    capsys.readouterr()
+    assert _sha256(src) == before
+    assert src.read_bytes() == original
+    assert 'Limitation of Liability' in out.read_text(encoding='utf-8')
+
+    (tmp_path / 'sub').mkdir()
+    alias = tmp_path / 'alias.txt'
+    alias.symlink_to(src)
+    hard = tmp_path / 'hard.txt'
+    os.link(src, hard)
+
+    assert_refused(str(src), str(src), src)
+    assert_refused(str(src), str(tmp_path / 'sub' / '..' / 'msa.txt'), src)
+    assert_refused(str(src), str(alias), src)
+    assert_refused(str(src), str(hard), src)
+    monkeypatch.chdir(tmp_path)
+    assert_refused('msa.txt', str(src.resolve()), src)
+
+    # Default --output is dashboard.html in the working directory.
+    nested = tmp_path / 'nested'
+    nested.mkdir()
+    default_src = nested / 'dashboard.html'
+    default_src.write_bytes(original)
+    monkeypatch.chdir(nested)
+    assert_refused('dashboard.html', None, default_src)
 
 
 def test_cli_analyze_missing_file_is_error():
