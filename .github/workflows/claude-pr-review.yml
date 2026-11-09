@@ -18,7 +18,6 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
-      id-token: write
     env:
       HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
     steps:
@@ -48,8 +47,7 @@ jobs:
             4. Tests and docs - missing or weak test coverage, outdated docs
 
             Use inline comments (mcp__github_inline_comment__create_inline_comment with confirmed: true)
-            for specific code issues. Then post one top-level summary with `gh pr comment` that lists
-            findings by severity (Critical / Important / Minor) and a short overall verdict.
+            for specific code issues.
             Be concise; do not comment on things that are fine. Only post GitHub comments.
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment"
