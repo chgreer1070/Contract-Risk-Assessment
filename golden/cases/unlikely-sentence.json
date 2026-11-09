@@ -1,0 +1,39 @@
+{
+  "id": "unlikely-sentence",
+  "name": "unlikely-sentence",
+  "state": {
+    "contract_type": "default",
+    "key_clauses_data": [
+      {
+        "clauseType": "Operations",
+        "section": "Section 4.3",
+        "extractedClause": "This risk is unlikely to occur.",
+        "summary": "Status note."
+      }
+    ],
+    "risk_assessment_data": [
+      {
+        "riskType": "Operational",
+        "clauseReference": "Section 4.3",
+        "riskLevel": "This risk is unlikely to occur.",
+        "likelihood": "This risk is unlikely to occur.",
+        "potentialConsequence": "A short status note."
+      }
+    ],
+    "recommended_actions": ""
+  },
+  "expect": {
+    "clauseCount": 1,
+    "weightedRiskScore": 4.0,
+    "allCitationsVerified": true,
+    "risks": [
+      {
+        "clauseReference": "Section 4.3",
+        "riskLevel": "Medium",
+        "likelihood": "Unlikely",
+        "score": 4,
+        "band": "Negotiate"
+      }
+    ]
+  }
+}

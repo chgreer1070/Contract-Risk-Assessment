@@ -52,6 +52,9 @@ def test_golden_cases_exist():
 @pytest.mark.parametrize('path', CASE_FILES, ids=[os.path.basename(p) for p in CASE_FILES])
 def test_golden_case(path):
     case = _load(path)
+    if 'id' in case:
+        stem = os.path.splitext(os.path.basename(path))[0]
+        assert case['id'] == stem, f"{path}: id {case['id']!r} does not match the filename"
     data = _contract_data(generate_dashboard_html(case['state']))
     exp = case['expect']
 
@@ -82,8 +85,19 @@ def test_golden_case(path):
         matches = [r for r in data['riskAssessment'] if r['clauseReference'] == er['clauseReference']]
         assert matches, f"{case['name']}: expected risk '{er['clauseReference']}' not found"
         r = matches[0]
-        for key in ('riskLevel', 'score', 'band'):
+        for key in ('riskLevel', 'likelihood', 'score', 'band'):
             if key in er:
                 assert r[key] == er[key], (
                     f"{case['name']} [{er['clauseReference']}] {key}: {r[key]} != {er[key]}"
+                )
+
+    if case.get('comparePhraseRemoval'):
+        risks = data['riskAssessment']
+        assert len(risks) >= 2, f"{case['name']}: phrase-removal pair needs two risks"
+        first = risks[0]
+        for other in risks[1:]:
+            for key in ('riskLevel', 'likelihood', 'score'):
+                assert other[key] == first[key], (
+                    f"{case['name']}: {key} changed when the negated phrase was removed "
+                    f"({other[key]!r} != {first[key]!r})"
                 )
