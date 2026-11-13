@@ -174,6 +174,18 @@ def test_risks_unlikely_not_misread_as_likely():
     assert out[0]['likelihood'] == 'Unlikely'
 
 
+def test_risks_negated_significant_level_not_misread_as_high():
+    md = (
+        "- **Risk Type**: Operational\n"
+        "- **Risk Level**: Not significant\n"
+        "- **Likelihood**: Likely\n"
+        "- **Potential Consequence**: Minor inconvenience.\n"
+    )
+    out = parse_risk_assessment(md)
+    assert out[0]['riskLevel'] == 'Low'
+    assert out[0]['score'] == 3
+
+
 # --------------------------------------------------------------------------- #
 # parse_recommended_actions
 # --------------------------------------------------------------------------- #
@@ -216,6 +228,7 @@ def test_actions_numbered_not_collapsed():
 @pytest.mark.parametrize('raw,expected', [
     ('High', 'High'), ('HIGH RISK', 'High'), ('critical', 'High'),
     ('very high', 'High'), ('Low', 'Low'), ('negligible', 'Low'),
+    ('not significant', 'Low'), ('no major risk', 'Low'),
     ('moderate', 'Medium'), ('', 'Medium'), (None, 'Medium'),
     ('nonsense', 'Medium'),
 ])
@@ -296,6 +309,32 @@ def test_generated_html_has_single_contract_data_block():
     state = {'key_clauses': '', 'risk_assessment_report': '', 'recommended_actions': ''}
     html = generate_dashboard_html(state)
     assert html.count('id="contract-data"') == 1
+
+
+def test_structured_negated_level_does_not_create_urgent_action():
+    state = {
+        'key_clauses': '',
+        'risk_assessment_data': [
+            {
+                'riskType': 'Operational',
+                'riskLevel': 'not significant',
+                'likelihood': 'Likely',
+                'potentialConsequence': 'Minor inconvenience.',
+                'clauseReference': 'S2',
+            },
+        ],
+        'recommended_actions_data': [
+            {
+                'clause': 'S2',
+                'riskLevel': 'no major risk',
+                'recommendedAction': 'Monitor at renewal.',
+            },
+        ],
+    }
+    data = _extract_contract_data(generate_dashboard_html(state))
+    assert data['riskAssessment'][0]['riskLevel'] == 'Low'
+    assert data['riskAssessment'][0]['score'] == 3
+    assert data['recommendedActions'][0]['priority'] == 'Medium'
 
 
 # --------------------------------------------------------------------------- #
