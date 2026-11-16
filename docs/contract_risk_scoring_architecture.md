@@ -48,7 +48,9 @@ Non-goals
   record is not rewritten. An override is rejected when the rationale is
   missing or blank, the original record id is unknown, the band is unchanged,
   or the contract hash or clause reference differs from the original score
-  record. A rejected override leaves the history file unchanged.
+  record. A rejected override leaves the history file unchanged. An override
+  line saved before those fields existed can still be read and is not rewritten
+  or filled in.
 
 ### 2.2 Non-functional
 - NFR1 Determinism where possible: schema/regex/citation checks are code, not model calls ([futureagi.com](https://futureagi.com/blog/contract-review-rag-build-evaluate-2026/)).

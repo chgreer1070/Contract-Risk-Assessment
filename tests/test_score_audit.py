@@ -1062,3 +1062,90 @@ def test_ac5_original_id_from_another_risk_is_unknown():
     with pytest.raises(ValueError, match='unknown original record id'):
         log.append(_override_from(first, originalRecordId=second['recordId']))
     assert log.records() == before
+
+
+def _legacy_override_line(source, **changes):
+    """One override line in the shape saved before the reviewer fields existed."""
+    body = {key: source[key] for key in AUDIT_FIELDS}
+    body['event'] = 'override'
+    body['recordId'] = 'AR-002'
+    body['timestamp'] = '2026-11-16T00:00:01Z'
+    body['rule'] = {
+        'id': 'human_override',
+        'evidence': 'Older override note with no reviewer fields.',
+    }
+    body.update(changes)
+    return gd._audit_line(body)
+
+
+def test_ac5_legacy_override_history_stays_readable(tmp_path):
+    """An older override line can be reopened and is not rewritten or filled in."""
+    audit = _one_risk_audit(tmp_path)
+    score_bytes = audit.read_bytes()
+    score = AuditLog.load(str(audit)).records()[0]
+    legacy = _legacy_override_line(score, likelihood='Unlikely', severity='Low', score=2)
+    audit.write_bytes(score_bytes + legacy)
+    saved = audit.read_bytes()
+
+    loaded = AuditLog.load(str(audit)).records()
+    assert len(loaded) == 2
+    assert loaded[0] == score
+    assert loaded[1]['event'] == 'override'
+    assert loaded[1]['recordId'] == 'AR-002'
+    for field in ('reviewer', 'oldBand', 'newBand', 'rationale', 'originalRecordId'):
+        assert field not in loaded[1]
+    assert audit.read_bytes() == saved
+
+    bare = {key: value for key, value in loaded[1].items() if key != 'recordId'}
+    with pytest.raises(ValueError, match='reviewer'):
+        AuditLog.load(str(audit)).append(bare)
+    assert audit.read_bytes() == saved
+
+    state = _synthetic_state('Section 2')
+    generate_dashboard_html(
+        state,
+        input_path=str(tmp_path / 'synthetic.txt'),
+        timestamp=TIMESTAMP,
+        audit_path=str(audit),
+        cases_dir=str(tmp_path / 'missing-golden'),
+    )
+    assert audit.read_bytes() == saved
+
+    added = gd.write_human_override(str(audit), **_ac5_override())
+    after = audit.read_bytes()
+    reloaded = AuditLog.load(str(audit)).records()
+    assert after.startswith(saved)
+    assert after.splitlines(keepends=True)[0] == score_bytes
+    assert after.splitlines(keepends=True)[1] == legacy
+    assert len(reloaded) == 3
+    assert reloaded[0] == score
+    assert 'reviewer' not in reloaded[1]
+    assert added['recordId'] == 'AR-003'
+    assert added['originalRecordId'] == 'AR-001'
+    assert added['reviewer'] == 'Synthetic Reviewer'
+    assert added['oldBand'] == 'Negotiate'
+    assert added['newBand'] == 'Escalate'
+    assert reloaded[2] == added
+
+
+def test_ac5_legacy_override_with_a_different_clause_is_rejected(tmp_path):
+    audit = _one_risk_audit(tmp_path)
+    score = AuditLog.load(str(audit)).records()[0]
+    legacy = _legacy_override_line(score, clauseReference='Section 99')
+    audit.write_bytes(audit.read_bytes() + legacy)
+    saved = audit.read_bytes()
+    with pytest.raises(ValueError, match='provenance'):
+        AuditLog.load(str(audit))
+    assert audit.read_bytes() == saved
+
+
+def test_ac5_partial_override_line_is_not_treated_as_legacy(tmp_path):
+    audit = _one_risk_audit(tmp_path)
+    score = AuditLog.load(str(audit)).records()[0]
+    body = json.loads(_legacy_override_line(score))
+    body['reviewer'] = 'Synthetic Reviewer'
+    audit.write_bytes(audit.read_bytes() + gd._audit_line(body))
+    saved = audit.read_bytes()
+    with pytest.raises(ValueError, match='oldBand'):
+        AuditLog.load(str(audit))
+    assert audit.read_bytes() == saved

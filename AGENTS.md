@@ -92,7 +92,9 @@ These are exactly the CI jobs. Everything runs on CPU with no network or model.
   override stores the reviewer, the old band, the new band, a non-empty
   rationale, a timestamp, and the original score record id. A missing
   rationale, an unknown original record id, an unchanged band, or a different
-  contract or clause is rejected and the history file is left unchanged. The
+  contract or clause is rejected and the history file is left unchanged. An
+  override line saved before those fields existed can still be read. It is not
+  rewritten and it is not filled in with a guessed reviewer or reason. The
   first record is never rewritten.
   Two builds that share one log take an interprocess lock for the reload, the
   checks, and the append, so record ids are not reused. Local analysis stores

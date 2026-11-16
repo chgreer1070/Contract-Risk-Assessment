@@ -1205,6 +1205,15 @@ def _fields_for(event: str) -> tuple[str, ...]:
     return AUDIT_FIELDS
 
 
+def _is_legacy_override(record: dict) -> bool:
+    """An override saved before the reviewer fields existed.
+
+    Those lines have only the original score-record fields. Reopening the file
+    must keep them as written. A new override cannot use this shape.
+    """
+    return record.get('event') == 'override' and not any(field in record for field in OVERRIDE_FIELDS)
+
+
 def _validate_override_shape(record: dict) -> None:
     """Reject an override that has no reviewer, no rationale, or the same band."""
     reviewer = record['reviewer']
@@ -1227,14 +1236,19 @@ def _validate_override_shape(record: dict) -> None:
         raise ValueError('override band is unchanged')
 
 
-def _validate_audit_body(record: dict) -> None:
-    required = _fields_for(record['event']) if record.get('event') in AUDIT_EVENTS else AUDIT_FIELDS
+def _validate_audit_body(record: dict, *, from_replay: bool = False) -> None:
+    legacy = from_replay and _is_legacy_override(record)
+    required: tuple[str, ...]
+    if legacy or record.get('event') not in AUDIT_EVENTS:
+        required = AUDIT_FIELDS
+    else:
+        required = _fields_for(record['event'])
     missing = [field for field in required if field != 'recordId' and field not in record]
     if missing:
         raise ValueError('audit record missing fields: ' + ', '.join(missing))
     if record['event'] not in AUDIT_EVENTS:
         raise ValueError(f'event must be one of {AUDIT_EVENTS}')
-    if record['event'] == 'override':
+    if record['event'] == 'override' and not legacy:
         _validate_override_shape(record)
     _require_timestamp(record['timestamp'])
     manifest = record['goldenManifestHash']
@@ -1283,12 +1297,16 @@ class AuditLog:
         return [_copy_json(record) for record in self._records]
 
     def append(self, record: dict) -> dict:
+        return self._append(record, from_replay=False)
+
+    def _append(self, record: dict, *, from_replay: bool) -> dict:
         if not isinstance(record, dict):
             raise TypeError('audit record must be a dict')
         if 'recordId' in record:
             raise ValueError('recordId is assigned by the log and cannot be set by the caller')
         stored = _copy_json(record)
-        _validate_audit_body(stored)
+        legacy = from_replay and _is_legacy_override(stored)
+        _validate_audit_body(stored, from_replay=from_replay)
         same_risk = [item for item in self._records if item['riskId'] == stored['riskId']]
         if stored['event'] == 'score' and any(item['event'] == 'score' for item in same_risk):
             raise ValueError(
@@ -1298,9 +1316,13 @@ class AuditLog:
             raise ValueError(f"override requires a score record for {stored['riskId']}")
         if stored['event'] == 'override':
             _require_matching_provenance(stored, same_risk)
-            _require_original_link(stored, self._records)
+            # An older override line has no original-record link. Leave it as
+            # stored. A new override must still point at the score record.
+            if not legacy:
+                _require_original_link(stored, self._records)
         stored['recordId'] = f'AR-{len(self._records) + 1:03d}'
-        ordered = {key: stored[key] for key in _fields_for(stored['event'])}
+        fields = AUDIT_FIELDS if legacy else _fields_for(stored['event'])
+        ordered = {key: stored[key] for key in fields}
         self._records.append(ordered)
         return _copy_json(ordered)
 
@@ -1404,7 +1426,7 @@ def _replay_audit_line(log: AuditLog, line: str) -> None:
     record_id = parsed.pop('recordId', None)
     if not isinstance(record_id, str):
         raise ValueError('audit log line is missing recordId')
-    stored = log.append(parsed)
+    stored = log._append(parsed, from_replay=True)
     if stored['recordId'] != record_id:
         raise ValueError('audit log record ids are not sequential')
 
