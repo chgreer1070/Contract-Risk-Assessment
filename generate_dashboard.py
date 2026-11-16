@@ -8,6 +8,9 @@ Usage:
 
     output = risk_graph.invoke(input={'pdf_path': 'contract.pdf'})
     html = generate_dashboard_html(output)
+    # When that state includes pdf_path, the call also writes
+    # ``<contract-name>.score-audit.jsonl`` next to the contract. The HTML
+    # does not contain the audit, so the page security hash stays the same.
 
     # Save to file:
     with open('dashboard.html', 'w') as f:
@@ -22,7 +25,7 @@ import hashlib
 import json
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 # --- Tolerant parsing helpers -------------------------------------------------
 # Real Mixtral/Mistral output deviates from the prompt's bullet+**bold** template:
@@ -899,8 +902,8 @@ def build_contract_data(state):
     """Score and enrich a pipeline state into the dashboard data object.
 
     This is the same object embedded in the dashboard. It does not include the
-    append-only score audit; that log is built separately so the dashboard
-    page and its security hash stay unchanged.
+    append-only score audit. ``generate_dashboard_html`` writes that log to its
+    own file so this object, and the dashboard security hash, stay unchanged.
     """
     # Prefer structured data from the pipeline nodes; fall back to parsing the
     # LLM markdown when structured lists aren't present (backward compatible).
@@ -964,16 +967,26 @@ def build_contract_data(state):
     }
 
 
-def generate_dashboard_html(state):
+def generate_dashboard_html(state, input_path=None, timestamp=None, audit_path=None, cases_dir=None):
     """
     Main entry point: takes pipeline State dict, returns complete HTML string.
 
     Args:
         state: dict with keys 'key_clauses' (str), 'risk_assessment_report' (str),
                'recommended_actions' (str). All are markdown/text from LLM output.
+               Notebook state also carries ``pdf_path``.
+        input_path: contract file to hash into the score audit. Falls back to
+               ``state['pdf_path']`` when that file exists.
+        timestamp: UTC time ``YYYY-MM-DDTHH:MM:SSZ`` stored on new score records.
+               The current UTC second is used when this is omitted.
+        audit_path: where to append the score audit. Defaults to a
+               ``.score-audit.jsonl`` file next to the contract.
+        cases_dir: golden case directory for the manifest hash. A missing
+               directory is recorded as ``unavailable``.
 
     Returns:
-        Complete HTML string for the visualization dashboard.
+        Complete HTML string for the visualization dashboard. The audit is a
+        separate file, never part of the HTML, so the security hash is unchanged.
     """
     data = build_contract_data(state)
 
@@ -1024,6 +1037,13 @@ def generate_dashboard_html(state):
             "The template may have changed; the dashboard cannot be generated safely."
         )
 
+    _record_dashboard_audit(
+        state,
+        input_path=input_path,
+        timestamp=timestamp,
+        audit_path=audit_path,
+        cases_dir=cases_dir,
+    )
     return result
 
 
@@ -1033,6 +1053,10 @@ def generate_dashboard_html(state):
 # an earlier record. The log is not embedded in the dashboard HTML.
 
 SCORER_VERSION = 'scorer-3x3-1'
+# Stored when the notebook download has no golden/cases directory. This is not
+# a hash, and it is not the hash of an empty directory.
+GOLDEN_MANIFEST_UNAVAILABLE = 'unavailable'
+AUDIT_SUFFIX = '.score-audit.jsonl'
 AUDIT_EVENTS = ('score', 'override')
 AUDIT_FIELDS = (
     'recordId',
@@ -1058,6 +1082,16 @@ _AUDIT_NONEMPTY = (
     'playbookVersion',
     'scorerVersion',
 )
+# An override may change the score, the matrix inputs, the timestamp, and the
+# rule. These fields identify the contract and the scoring setup, so they have
+# to match the original score record.
+_PROVENANCE_FIELDS = (
+    'clauseReference',
+    'inputFileSha256',
+    'goldenManifestHash',
+    'playbookVersion',
+    'scorerVersion',
+)
 
 
 def _read_regular_file(path: str) -> bytes:
@@ -1079,12 +1113,13 @@ def golden_manifest_hash(cases_dir: str | None = None) -> str:
     Only ``golden/cases/*.json`` is hashed. Each name and body is length-prefixed
     so one file cannot be rearranged into two. Audit fixtures live elsewhere, so
     committing a fixture does not change this manifest. A missing cases directory
-    is an error rather than the hash of an empty manifest.
+    returns ``unavailable`` rather than the hash of an empty manifest or an error.
+    The notebook download does not include ``golden/cases``.
     """
     if cases_dir is None:
         cases_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'golden', 'cases')
     if not os.path.isdir(cases_dir):
-        raise FileNotFoundError(f'golden cases directory not found: {cases_dir}')
+        return GOLDEN_MANIFEST_UNAVAILABLE
     digest = hashlib.sha256()
     for name in sorted(os.listdir(cases_dir)):
         if not name.endswith('.json'):
@@ -1134,9 +1169,17 @@ def _validate_audit_body(record: dict) -> None:
     if record['event'] not in AUDIT_EVENTS:
         raise ValueError(f'event must be one of {AUDIT_EVENTS}')
     _require_timestamp(record['timestamp'])
-    for field in ('goldenManifestHash', 'inputFileSha256'):
-        if not isinstance(record[field], str) or not _SHA256_RE.fullmatch(record[field]):
-            raise ValueError(f'{field} must be a lowercase SHA-256 hex digest')
+    manifest = record['goldenManifestHash']
+    if manifest != GOLDEN_MANIFEST_UNAVAILABLE and (
+        not isinstance(manifest, str) or not _SHA256_RE.fullmatch(manifest)
+    ):
+        raise ValueError(
+            'goldenManifestHash must be a lowercase SHA-256 hex digest or '
+            f'{GOLDEN_MANIFEST_UNAVAILABLE!r}'
+        )
+    digest = record['inputFileSha256']
+    if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
+        raise ValueError('inputFileSha256 must be a lowercase SHA-256 hex digest')
     if not isinstance(record['clauseReference'], str):
         raise ValueError('clauseReference must be a string')
     for field in _AUDIT_NONEMPTY:
@@ -1184,10 +1227,83 @@ class AuditLog:
             )
         if stored['event'] == 'override' and not any(item['event'] == 'score' for item in same_risk):
             raise ValueError(f"override requires a score record for {stored['riskId']}")
+        if stored['event'] == 'override':
+            _require_matching_provenance(stored, same_risk)
         stored['recordId'] = f'AR-{len(self._records) + 1:03d}'
         ordered = {key: stored[key] for key in AUDIT_FIELDS}
         self._records.append(ordered)
         return _copy_json(ordered)
+
+    @classmethod
+    def load(cls, path: str) -> "AuditLog":
+        """Reopen an append-only log. Earlier lines are not rewritten."""
+        raw = _read_regular_file(path)
+        log = cls()
+        if raw == b'':
+            return log
+        text = raw.decode('utf-8')
+        if not text.endswith('\n'):
+            raise ValueError('audit log must be newline-terminated JSON lines')
+        # Split only on the newline this writer adds. Clause text may contain
+        # U+2028 / U+2029 / U+0085, which str.splitlines() would treat as breaks.
+        lines = text.split('\n')[:-1]
+        for line in lines:
+            if line == '':
+                raise ValueError('audit log has a blank line')
+            _replay_audit_line(log, line)
+        return log
+
+    def write_new(self, path: str, already: int) -> None:
+        """Append records added after ``already``. Never rewrites earlier lines."""
+        if already < 0 or already > len(self._records):
+            raise ValueError('audit write position is outside the log')
+        payload = b''.join(_audit_line(record) for record in self._records[already:])
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, 'O_NOFOLLOW', 0)
+        fd = os.open(path, flags, 0o600)
+        try:
+            start = os.lseek(fd, 0, os.SEEK_END)
+            view = memoryview(payload)
+            try:
+                while view:
+                    written = os.write(fd, view)
+                    if written <= 0:
+                        raise OSError('audit log write made no progress')
+                    view = view[written:]
+            except OSError:
+                os.ftruncate(fd, start)
+                raise
+        finally:
+            os.close(fd)
+
+
+def _audit_line(record: dict) -> bytes:
+    """One JSON line. Line-separator characters stay inside the JSON string."""
+    line = json.dumps(record, ensure_ascii=False)
+    line = line.replace('\u2028', '\\u2028').replace('\u2029', '\\u2029').replace('\u0085', '\\u0085')
+    return (line + '\n').encode('utf-8')
+
+
+def _replay_audit_line(log: AuditLog, line: str) -> None:
+    parsed = json.loads(line)
+    if not isinstance(parsed, dict):
+        raise ValueError('audit log line must be a JSON object')
+    record_id = parsed.pop('recordId', None)
+    if not isinstance(record_id, str):
+        raise ValueError('audit log line is missing recordId')
+    stored = log.append(parsed)
+    if stored['recordId'] != record_id:
+        raise ValueError('audit log record ids are not sequential')
+
+
+def _require_matching_provenance(stored: dict, same_risk: list[dict]) -> None:
+    """Reject an override that names the same risk but a different contract or clause."""
+    original = next(item for item in same_risk if item['event'] == 'score')
+    mismatched = [field for field in _PROVENANCE_FIELDS if stored.get(field) != original.get(field)]
+    if mismatched:
+        raise ValueError(
+            'override provenance does not match the score record for '
+            f"{stored['riskId']}: " + ', '.join(mismatched)
+        )
 
 
 def _score_audit_body(index, risk, playbook_version, manifest_hash, input_sha256, timestamp):
@@ -1248,6 +1364,100 @@ def build_score_audit(state, input_path: str, timestamp: str, cases_dir: str | N
             timestamp=timestamp,
         ))
     return log
+
+
+def audit_sidecar_path(output_path: str) -> str:
+    """Score-audit file that sits next to a dashboard, outside the HTML."""
+    root, _ext = os.path.splitext(output_path)
+    return root + AUDIT_SUFFIX
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def _paths_are_same(left: str, right: str) -> bool:
+    try:
+        return os.path.samefile(left, right)
+    except OSError:
+        return os.path.realpath(left) == os.path.realpath(right)
+
+
+def _hashable_contract_path(path: str) -> str:
+    """Regular file whose bytes are hashed.
+
+    A symlink is resolved once so a CLI or notebook path that already reads
+    through a link can still be audited. ``file_sha256`` then refuses to follow
+    any link that remains.
+    """
+    if not os.path.islink(path):
+        return path
+    candidate = os.path.realpath(path)
+    if not os.path.isfile(candidate):
+        raise OSError(f'contract path must be a regular file: {path}')
+    return candidate
+
+
+def _contract_path_for_audit(state, input_path: str | None) -> str | None:
+    if input_path is not None:
+        if not isinstance(input_path, str) or not input_path:
+            raise ValueError('input_path must be the contract file path')
+        return input_path
+    if isinstance(state, dict):
+        candidate = state.get('pdf_path')
+        if isinstance(candidate, str) and candidate and os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def _default_audit_path(contract_path: str) -> str:
+    directory = os.path.dirname(os.path.abspath(contract_path))
+    stem, _ext = os.path.splitext(os.path.basename(contract_path))
+    return os.path.join(directory, stem + AUDIT_SUFFIX)
+
+
+def _record_dashboard_audit(state, input_path, timestamp, audit_path, cases_dir) -> None:
+    """Append score records for this analysis. Does not touch the HTML."""
+    contract_path = _contract_path_for_audit(state, input_path)
+    if contract_path is None:
+        return
+    when = timestamp if timestamp is not None else _utc_timestamp()
+    destination = audit_path if audit_path is not None else _default_audit_path(contract_path)
+    hashed = _hashable_contract_path(contract_path)
+    if _paths_are_same(hashed, destination) or _paths_are_same(contract_path, destination):
+        raise ValueError('audit log path must be different from the contract file')
+    fresh = build_score_audit(state, hashed, when, cases_dir=cases_dir)
+    if os.path.exists(destination):
+        log = AuditLog.load(destination)
+    else:
+        log = AuditLog()
+    already = len(log.records())
+    seen = {record['riskId']: record for record in log.records() if record['event'] == 'score'}
+    for record in fresh.records():
+        prior = seen.get(record['riskId'])
+        body = {key: value for key, value in record.items() if key != 'recordId'}
+        if prior is None:
+            log.append(body)
+            continue
+        # Keep the original score. The same contract and clause with the same
+        # score is a re-run. A different contract, clause, or score is refused
+        # before any new line is written, so the page is not returned either.
+        mismatched = [field for field in _PROVENANCE_FIELDS if prior.get(field) != record.get(field)]
+        if mismatched:
+            raise ValueError(
+                f"score record for {record['riskId']} already exists with different provenance: "
+                + ', '.join(mismatched)
+            )
+        changed = [
+            field for field in ('likelihood', 'severity', 'score', 'rule')
+            if prior.get(field) != record.get(field)
+        ]
+        if changed:
+            raise ValueError(
+                f"score record for {record['riskId']} already exists with a different score: "
+                + ', '.join(changed)
+            )
+    log.write_new(destination, already)
 
 
 if __name__ == '__main__':

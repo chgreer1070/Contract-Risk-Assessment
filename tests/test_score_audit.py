@@ -8,6 +8,8 @@ leaves the first one unchanged. The sample contract file is only read.
 import hashlib
 import json
 import os
+import re
+import stat
 import sys
 
 import pytest
@@ -17,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import generate_dashboard as gd  # noqa: E402
 from generate_dashboard import (  # noqa: E402
     AUDIT_FIELDS,
+    GOLDEN_MANIFEST_UNAVAILABLE,
     AuditLog,
     build_contract_data,
     build_score_audit,
@@ -30,6 +33,8 @@ CONTRACT = os.path.join(ROOT, 'golden', 'sample', 'acme_widget_supply.txt')
 STATE_PATH = os.path.join(ROOT, 'golden', 'sample', 'acme_widget_supply_state.json')
 FIXTURE = os.path.join(ROOT, 'golden', 'fixtures', 'acme_widget_supply_audit.json')
 TIMESTAMP = '2026-11-16T00:00:00Z'
+# AC7: the dashboard page security hash stays on this value.
+CSP_HASH = 'sha384-0DBm+e7srqe4yFAAG0iPj5krWxrZvvJwJGK8uHUsb5QLnWKA2AjBirmrZuWTwVT6'
 
 
 def _load(path):
@@ -135,8 +140,12 @@ def test_manifest_hash_ignores_non_json_and_uses_file_bytes(tmp_path):
     assert first == golden_manifest_hash(str(cases))
     (cases / 'a.json').write_bytes(b'{"id":"changed"}\n')
     assert golden_manifest_hash(str(cases)) != first
-    with pytest.raises(FileNotFoundError):
-        golden_manifest_hash(str(tmp_path / 'missing'))
+    empty = tmp_path / 'empty'
+    empty.mkdir()
+    empty_hash = golden_manifest_hash(str(empty))
+    assert empty_hash != GOLDEN_MANIFEST_UNAVAILABLE
+    assert re.fullmatch(r'[0-9a-f]{64}', empty_hash)
+    assert golden_manifest_hash(str(tmp_path / 'missing')) == GOLDEN_MANIFEST_UNAVAILABLE
 
 
 def test_bad_timestamp_does_not_change_the_contract():
@@ -326,3 +335,367 @@ def test_empty_clause_reference_is_still_one_record(tmp_path):
     assert len(records) == 1
     assert records[0]['clauseReference'] == ''
     assert records[0]['score'] == 2
+
+
+def _synthetic_state(clause='Section 2'):
+    return {
+        'contract_type': 'default',
+        'risk_assessment_data': [{
+            'riskType': 'Legal',
+            'clauseReference': clause,
+            'riskLevel': 'Medium',
+            'likelihood': 'Possible',
+            'potentialConsequence': 'Synthetic loss on a made-up contract.',
+        }],
+    }
+
+
+def _override_from(source, **overrides):
+    body = {
+        'event': 'override',
+        'riskId': source['riskId'],
+        'clauseReference': source['clauseReference'],
+        'likelihood': 'Possible',
+        'severity': 'Medium',
+        'score': 5,
+        'playbookVersion': source['playbookVersion'],
+        'scorerVersion': source['scorerVersion'],
+        'goldenManifestHash': source['goldenManifestHash'],
+        'inputFileSha256': source['inputFileSha256'],
+        'timestamp': '2026-11-16T00:00:01Z',
+        'rule': {'id': 'human_override', 'evidence': 'Synthetic reviewer note.'},
+    }
+    body.update(overrides)
+    return body
+
+
+def test_missing_golden_directory_marks_manifest_unavailable(tmp_path):
+    """Notebook download has no golden/cases folder. Scoring still records."""
+    contract = tmp_path / 'synthetic.txt'
+    contract.write_text('Synthetic contract. No golden cases shipped.\n', encoding='utf-8')
+    missing = tmp_path / 'golden' / 'cases'
+    records = build_score_audit(
+        _synthetic_state('Section 1'),
+        str(contract),
+        TIMESTAMP,
+        cases_dir=str(missing),
+    ).records()
+    assert len(records) == 1
+    assert records[0]['goldenManifestHash'] == GOLDEN_MANIFEST_UNAVAILABLE
+    assert records[0]['inputFileSha256'] == hashlib.sha256(contract.read_bytes()).hexdigest()
+    assert records[0]['clauseReference'] == 'Section 1'
+    log = AuditLog()
+    body = {key: value for key, value in records[0].items() if key != 'recordId'}
+    log.append(body)
+    log.append(_override_from(records[0]))
+    assert [item['goldenManifestHash'] for item in log.records()] == [
+        GOLDEN_MANIFEST_UNAVAILABLE,
+        GOLDEN_MANIFEST_UNAVAILABLE,
+    ]
+
+
+def test_generate_dashboard_html_writes_audit_without_changing_html(tmp_path):
+    contract = tmp_path / 'synthetic.txt'
+    original = b'Section 2 synthetic liability text.\n'
+    contract.write_bytes(original)
+    state = _synthetic_state()
+    missing = str(tmp_path / 'missing-golden')
+    plain = generate_dashboard_html(state)
+    audit_path = tmp_path / 'dash.score-audit.jsonl'
+    html = generate_dashboard_html(
+        state,
+        input_path=str(contract),
+        timestamp=TIMESTAMP,
+        audit_path=str(audit_path),
+        cases_dir=missing,
+    )
+    assert html == plain
+    assert CSP_HASH in html
+    assert 'goldenManifestHash' not in html
+    assert 'AR-001' not in html
+    assert contract.read_bytes() == original
+
+    assert stat.S_IMODE(audit_path.stat().st_mode) == 0o600
+    risks = build_contract_data(state)['riskAssessment']
+    records = AuditLog.load(str(audit_path)).records()
+    assert len(records) == len(risks)
+    assert records[0]['event'] == 'score'
+    assert records[0]['goldenManifestHash'] == GOLDEN_MANIFEST_UNAVAILABLE
+    assert records[0]['inputFileSha256'] == hashlib.sha256(original).hexdigest()
+    assert records[0]['clauseReference'] == risks[0]['clauseReference']
+    assert records[0]['score'] == risks[0]['score']
+
+    before = audit_path.read_bytes()
+    again = generate_dashboard_html(
+        state,
+        input_path=str(contract),
+        timestamp='2026-11-16T00:00:02Z',
+        audit_path=str(audit_path),
+        cases_dir=missing,
+    )
+    assert again == html
+    assert audit_path.read_bytes() == before
+
+    other = tmp_path / 'other.txt'
+    other.write_text('A different synthetic contract.\n', encoding='utf-8')
+    with pytest.raises(ValueError, match='different provenance'):
+        generate_dashboard_html(
+            state,
+            input_path=str(other),
+            timestamp=TIMESTAMP,
+            audit_path=str(audit_path),
+            cases_dir=missing,
+        )
+    assert audit_path.read_bytes() == before
+    assert other.read_bytes() == b'A different synthetic contract.\n'
+
+    log = AuditLog.load(str(audit_path))
+    first_line = before.splitlines()[0]
+    added = log.append(_override_from(
+        log.records()[0],
+        likelihood='Unlikely',
+        severity='Medium',
+        score=4,
+    ))
+    log.write_new(str(audit_path), 1)
+    reloaded = AuditLog.load(str(audit_path)).records()
+    assert audit_path.read_bytes().splitlines()[0] == first_line
+    assert reloaded[0] == records[0]
+    assert reloaded[1]['recordId'] == added['recordId']
+    assert reloaded[1]['event'] == 'override'
+    assert len(reloaded) == len(risks) + 1
+
+
+def test_notebook_pdf_path_writes_a_sidecar_audit(tmp_path):
+    contract = tmp_path / 'deal.txt'
+    contract.write_text('Synthetic notebook upload.\n', encoding='utf-8')
+    state = _synthetic_state('Section 9')
+    state['pdf_path'] = str(contract)
+    missing = str(tmp_path / 'no-golden')
+    html = generate_dashboard_html(state, timestamp=TIMESTAMP, cases_dir=missing)
+    sidecar = tmp_path / 'deal.score-audit.jsonl'
+    records = AuditLog.load(str(sidecar)).records()
+    assert len(records) == len(build_contract_data(state)['riskAssessment'])
+    assert records[0]['goldenManifestHash'] == GOLDEN_MANIFEST_UNAVAILABLE
+    assert CSP_HASH in html
+    assert 'goldenManifestHash' not in html
+
+    clocked = tmp_path / 'clock.score-audit.jsonl'
+    generate_dashboard_html(
+        _synthetic_state(),
+        input_path=str(contract),
+        audit_path=str(clocked),
+        cases_dir=missing,
+    )
+    stamped = AuditLog.load(str(clocked)).records()[0]['timestamp']
+    assert re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z', stamped)
+
+    absent = dict(state)
+    absent['pdf_path'] = str(tmp_path / 'missing-upload.txt')
+    before = sorted(path.name for path in tmp_path.glob('*.score-audit.jsonl'))
+    assert generate_dashboard_html(absent) == generate_dashboard_html(_synthetic_state('Section 9'))
+    assert sorted(path.name for path in tmp_path.glob('*.score-audit.jsonl')) == before
+
+
+def test_audit_file_cannot_replace_the_contract_or_follow_a_symlink(tmp_path):
+    contract = tmp_path / 'synthetic.txt'
+    original = b'synthetic contract bytes\n'
+    contract.write_bytes(original)
+    state = _synthetic_state()
+    missing = str(tmp_path / 'missing-golden')
+    with pytest.raises(ValueError, match='different from the contract'):
+        generate_dashboard_html(
+            state,
+            input_path=str(contract),
+            timestamp=TIMESTAMP,
+            audit_path=str(contract),
+            cases_dir=missing,
+        )
+    assert contract.read_bytes() == original
+
+    target = tmp_path / 'keep.txt'
+    target.write_text('keep\n', encoding='utf-8')
+    link = tmp_path / 'audit-link.jsonl'
+    link.symlink_to(target)
+    with pytest.raises(OSError):
+        generate_dashboard_html(
+            state,
+            input_path=str(contract),
+            timestamp=TIMESTAMP,
+            audit_path=str(link),
+            cases_dir=missing,
+        )
+    assert target.read_text(encoding='utf-8') == 'keep\n'
+    assert contract.read_bytes() == original
+
+    source = tmp_path / 'real-contract.txt'
+    source.write_text('synthetic linked contract\n', encoding='utf-8')
+    linked = tmp_path / 'linked.txt'
+    linked.symlink_to(source)
+    audit_path = tmp_path / 'linked.score-audit.jsonl'
+    generate_dashboard_html(
+        state,
+        input_path=str(linked),
+        timestamp=TIMESTAMP,
+        audit_path=str(audit_path),
+        cases_dir=missing,
+    )
+    stored = AuditLog.load(str(audit_path)).records()[0]
+    assert stored['inputFileSha256'] == hashlib.sha256(source.read_bytes()).hexdigest()
+    assert source.read_text(encoding='utf-8') == 'synthetic linked contract\n'
+    with pytest.raises(OSError):
+        file_sha256(str(linked))
+
+
+def test_reopened_log_rejects_a_damaged_file(tmp_path):
+    empty = tmp_path / 'empty.jsonl'
+    empty.write_bytes(b'')
+    assert AuditLog.load(str(empty)).records() == []
+
+    bare = tmp_path / 'bare.jsonl'
+    bare.write_text('{"recordId": "AR-001"}', encoding='utf-8')
+    with pytest.raises(ValueError, match='newline-terminated'):
+        AuditLog.load(str(bare))
+
+    not_object = tmp_path / 'list.jsonl'
+    not_object.write_text('[]\n', encoding='utf-8')
+    with pytest.raises(ValueError, match='JSON object'):
+        AuditLog.load(str(not_object))
+
+    missing_id = tmp_path / 'no-id.jsonl'
+    missing_id.write_text('{}\n', encoding='utf-8')
+    with pytest.raises(ValueError, match='recordId'):
+        AuditLog.load(str(missing_id))
+
+    skipped = tmp_path / 'skipped.jsonl'
+    body = _body()
+    body['recordId'] = 'AR-002'
+    skipped.write_text(json.dumps(body) + '\n', encoding='utf-8')
+    with pytest.raises(ValueError, match='not sequential'):
+        AuditLog.load(str(skipped))
+
+    blank = tmp_path / 'blank.jsonl'
+    blank.write_text('\n', encoding='utf-8')
+    with pytest.raises(ValueError, match='blank line'):
+        AuditLog.load(str(blank))
+
+    log = AuditLog()
+    with pytest.raises(ValueError, match='outside the log'):
+        log.write_new(str(tmp_path / 'unused.jsonl'), 1)
+    assert not (tmp_path / 'unused.jsonl').exists()
+
+
+def test_clause_line_separators_round_trip_and_can_be_reopened(tmp_path):
+    contract = tmp_path / 'synthetic.txt'
+    contract.write_text('synthetic contract\n', encoding='utf-8')
+    clause = 'Section 2\u2028\u2029\u0085 tail'
+    state = _synthetic_state(clause)
+    audit = tmp_path / 'dash.score-audit.jsonl'
+    missing = str(tmp_path / 'missing-golden')
+    generate_dashboard_html(
+        state,
+        input_path=str(contract),
+        timestamp=TIMESTAMP,
+        audit_path=str(audit),
+        cases_dir=missing,
+    )
+    raw = audit.read_bytes()
+    assert raw.count(b'\n') == 1
+    assert b'\xe2\x80\xa8' not in raw
+    assert b'\xe2\x80\xa9' not in raw
+    assert b'\xc2\x85' not in raw
+    loaded = AuditLog.load(str(audit)).records()
+    assert loaded[0]['clauseReference'] == clause
+    generate_dashboard_html(
+        state,
+        input_path=str(contract),
+        timestamp='2026-11-16T00:00:09Z',
+        audit_path=str(audit),
+        cases_dir=missing,
+    )
+    assert AuditLog.load(str(audit)).records() == loaded
+
+
+def test_a_changed_score_is_refused_and_the_audit_stays(tmp_path):
+    contract = tmp_path / 'synthetic.txt'
+    contract.write_text('synthetic contract\n', encoding='utf-8')
+    audit = tmp_path / 'dash.score-audit.jsonl'
+    missing = str(tmp_path / 'missing-golden')
+    generate_dashboard_html(
+        _synthetic_state(),
+        input_path=str(contract),
+        timestamp=TIMESTAMP,
+        audit_path=str(audit),
+        cases_dir=missing,
+    )
+    before = audit.read_bytes()
+    changed = _synthetic_state()
+    changed['risk_assessment_data'][0]['riskLevel'] = 'High'
+    changed['risk_assessment_data'][0]['likelihood'] = 'Likely'
+    with pytest.raises(ValueError, match='different score'):
+        generate_dashboard_html(
+            changed,
+            input_path=str(contract),
+            timestamp=TIMESTAMP,
+            audit_path=str(audit),
+            cases_dir=missing,
+        )
+    assert audit.read_bytes() == before
+
+
+def test_a_failed_append_does_not_leave_a_partial_line(tmp_path, monkeypatch):
+    contract = tmp_path / 'synthetic.txt'
+    contract.write_text('synthetic contract\n', encoding='utf-8')
+    audit = tmp_path / 'dash.score-audit.jsonl'
+    generate_dashboard_html(
+        _synthetic_state(),
+        input_path=str(contract),
+        timestamp=TIMESTAMP,
+        audit_path=str(audit),
+        cases_dir=str(tmp_path / 'missing-golden'),
+    )
+    before = audit.read_bytes()
+    real_write = os.write
+
+    def fail_after_one(fd, data):
+        real_write(fd, data[:1])
+        raise OSError('disk full')
+
+    monkeypatch.setattr(os, 'write', fail_after_one)
+    log = AuditLog.load(str(audit))
+    log.append(_override_from(log.records()[0]))
+    with pytest.raises(OSError, match='disk full'):
+        log.write_new(str(audit), 1)
+    assert audit.read_bytes() == before
+
+
+def test_dashboard_audit_requires_a_real_contract_path(tmp_path):
+    state = _synthetic_state()
+    with pytest.raises(ValueError, match='input_path'):
+        generate_dashboard_html(state, input_path='')
+    broken = tmp_path / 'broken.txt'
+    broken.symlink_to(tmp_path / 'missing-target.txt')
+    with pytest.raises(OSError, match='regular file'):
+        generate_dashboard_html(
+            state,
+            input_path=str(broken),
+            timestamp=TIMESTAMP,
+            audit_path=str(tmp_path / 'audit.jsonl'),
+        )
+    assert not (tmp_path / 'audit.jsonl').exists()
+
+
+@pytest.mark.parametrize('field,value', [
+    ('inputFileSha256', 'c' * 64),
+    ('clauseReference', 'Section 99'),
+    ('goldenManifestHash', 'd' * 64),
+    ('playbookVersion', '1999-01-01'),
+    ('scorerVersion', 'scorer-other'),
+])
+def test_override_rejects_mismatched_provenance(field, value):
+    log = AuditLog()
+    score = log.append(_body())
+    before = log.records()
+    with pytest.raises(ValueError, match='provenance'):
+        log.append(_override_from(score, **{field: value}))
+    assert log.records() == before

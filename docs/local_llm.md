@@ -48,6 +48,10 @@ You do **not** need Hugging Face tokens, CUDA, Unsloth, or Colab.
    ```bash
    python -m local_llm analyze contract.txt -o dashboard.html
    ```
+
+   This also writes `dashboard.score-audit.jsonl` beside the dashboard. That
+   file is the score history. It is not inside the HTML page. Running the
+   command again does not duplicate scores that are already recorded.
 6. **Open `dashboard.html`** in your browser. Same dashboard as before —
    scores, reasoning, verified quotes, "Needs review only" filter.
 

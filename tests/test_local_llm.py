@@ -306,6 +306,14 @@ def test_cli_ping_and_analyze(tmp_path, standin):
     html = out.read_text(encoding='utf-8')
     assert 'contract-data' in html
     assert 'Limitation of Liability' in html
+    audit = tmp_path / 'dash.score-audit.jsonl'
+    records = [json.loads(line) for line in audit.read_text(encoding='utf-8').splitlines()]
+    assert len(records) == 1
+    assert records[0]['event'] == 'score'
+    assert records[0]['riskId'] == 'RK-001'
+    assert records[0]['inputFileSha256'] == _sha256(src)
+    assert 'goldenManifestHash' not in html
+    assert 'inputFileSha256' not in html
 
 
 def _sha256(path: Path) -> str:
@@ -366,3 +374,21 @@ def test_cli_analyze_leaves_input_file_byte_identical(tmp_path, standin, capsys,
 
 def test_cli_analyze_missing_file_is_error():
     assert cli_main(['analyze', '/no/such/contract.txt']) == 1
+
+
+def test_cli_analyze_does_not_write_the_audit_through_a_symlink(tmp_path, standin):
+    src = tmp_path / 'msa.txt'
+    src.write_text('Section 8.1 Liability is capped at fees paid.', encoding='utf-8')
+    out = tmp_path / 'dash.html'
+    target = tmp_path / 'keep.txt'
+    target.write_text('keep\n', encoding='utf-8')
+    audit = tmp_path / 'dash.score-audit.jsonl'
+    audit.symlink_to(target)
+    code = cli_main([
+        'analyze', str(src), '-o', str(out),
+        '--base-url', standin, '--model', 'stand-in-model', '--timeout', '5',
+    ])
+    assert code == 1
+    assert not out.exists()
+    assert target.read_text(encoding='utf-8') == 'keep\n'
+    assert src.read_text(encoding='utf-8') == 'Section 8.1 Liability is capped at fees paid.'

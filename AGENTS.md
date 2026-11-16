@@ -78,13 +78,18 @@ These are exactly the CI jobs. Everything runs on CPU with no network or model.
   through `generate_dashboard_html` so the static page still renders them.
 - **Determinism:** scoring and confidence are pure functions of the input; do not
   add randomness or network calls. New behaviour needs tests in `tests/`.
-- **Score audit:** `build_score_audit` appends one immutable score record per
-  scored risk (risk id, clause reference, likelihood, severity, score, playbook
-  version, scorer version, golden-case manifest hash, input file SHA-256,
-  timestamp, and the matrix rule that produced the score). A later override
-  appends a second record; the first record is never rewritten. Do not embed
-  the log in the dashboard HTML. Proof fixture:
-  `golden/fixtures/acme_widget_supply_audit.json`.
+- **Score audit:** normal scoring (`generate_dashboard_html`, including the
+  local CLI and the notebook `pdf_path`) appends one immutable score record per
+  scored risk. The log is a `.score-audit.jsonl` file next to the dashboard
+  (CLI) or next to the contract (notebook). Do not embed it in the dashboard
+  HTML; the page security hash stays unchanged. Each record stores risk id,
+  clause reference, likelihood, severity, score, playbook version, scorer
+  version, golden-case manifest hash, input file SHA-256, timestamp, and the
+  matrix rule. A missing `golden/cases` directory stores the manifest as
+  `unavailable` (the notebook download does not include that folder). A later
+  override appends a second record and must keep the same contract hash, clause
+  reference, manifest, and version fields. The first record is never rewritten.
+  Proof fixture: `golden/fixtures/acme_widget_supply_audit.json`.
 - **Accessibility:** interactive elements need labels/roles/keyboard support;
   status changes should use the existing `aria-live` `announce()`.
 - **Playbooks** are data, not code: add clause types in `playbooks/*.json` and
