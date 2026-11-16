@@ -372,6 +372,62 @@ def test_cli_analyze_leaves_input_file_byte_identical(tmp_path, standin, capsys,
     assert_refused('dashboard.html', None, default_src)
 
 
+def test_cli_audit_digest_matches_the_bytes_read_before_the_model(tmp_path, monkeypatch):
+    """An edit during the first model call must not change the recorded fingerprint."""
+    src = tmp_path / 'msa.txt'
+    original = b'Section 8.1 Liability is unlimited.\n'
+    revised = b'Section 8.1 Liability is capped at fees paid.\n'
+    src.write_bytes(original)
+    seen = []
+
+    def fake_chat(messages, **_kwargs):
+        prompt = messages[0]['content']
+        seen.append(prompt)
+        if len(seen) == 1:
+            src.write_bytes(revised)
+        return _reply_for(prompt)
+
+    monkeypatch.setattr('local_llm.pipeline.chat', fake_chat)
+    out = tmp_path / 'dash.html'
+    code = cli_main([
+        'analyze', str(src), '-o', str(out),
+        '--base-url', 'http://127.0.0.1:9/v1', '--model', 'mock', '--timeout', '5',
+    ])
+    assert code == 0
+    assert src.read_bytes() == revised
+    assert seen
+    assert 'unlimited' in seen[0]
+    assert 'Liability is capped at fees paid.' not in ''.join(seen)
+    audit = tmp_path / 'dash.score-audit.jsonl'
+    records = [json.loads(line) for line in audit.read_text(encoding='utf-8').splitlines()]
+    assert records
+    original_digest = hashlib.sha256(original).hexdigest()
+    assert {record['inputFileSha256'] for record in records} == {original_digest}
+    assert 'inputFileSha256' not in out.read_text(encoding='utf-8')
+
+
+def test_cli_refuses_an_audit_when_the_fingerprint_is_missing(tmp_path, monkeypatch, capsys):
+    src = tmp_path / 'msa.txt'
+    src.write_text('Section 8.1 Liability is unlimited.\n', encoding='utf-8')
+    out = tmp_path / 'dash.html'
+
+    def fake_analyze(*_args, **_kwargs):
+        return {
+            'key_clauses_data': _CLAUSES,
+            'risk_assessment_data': _RISKS,
+            'recommended_actions_data': _ACTIONS,
+            'local_llm': {'model': 'mock', 'base_url': 'http://example', 'truncated': False},
+        }
+
+    monkeypatch.setattr('local_llm.__main__.analyze_contract', fake_analyze)
+    code = cli_main(['analyze', str(src), '-o', str(out), '--timeout', '5'])
+    assert code == 1
+    assert 'fingerprint' in capsys.readouterr().err
+    assert not out.exists()
+    assert not (tmp_path / 'dash.score-audit.jsonl').exists()
+    assert src.read_text(encoding='utf-8') == 'Section 8.1 Liability is unlimited.\n'
+
+
 def test_cli_analyze_missing_file_is_error():
     assert cli_main(['analyze', '/no/such/contract.txt']) == 1
 

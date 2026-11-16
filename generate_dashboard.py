@@ -27,6 +27,16 @@ import os
 import re
 from datetime import UTC, datetime, timedelta
 
+try:
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - Windows has no fcntl
+    _fcntl = None  # type: ignore[assignment]
+
+try:
+    import msvcrt as _msvcrt
+except ImportError:
+    _msvcrt = None  # type: ignore[assignment]
+
 # --- Tolerant parsing helpers -------------------------------------------------
 # Real Mixtral/Mistral output deviates from the prompt's bullet+**bold** template:
 # it emits numbered lists, drops bold markers, and adds prose qualifiers. These
@@ -967,7 +977,14 @@ def build_contract_data(state):
     }
 
 
-def generate_dashboard_html(state, input_path=None, timestamp=None, audit_path=None, cases_dir=None):
+def generate_dashboard_html(
+    state,
+    input_path=None,
+    timestamp=None,
+    audit_path=None,
+    cases_dir=None,
+    input_sha256=None,
+):
     """
     Main entry point: takes pipeline State dict, returns complete HTML string.
 
@@ -983,6 +1000,10 @@ def generate_dashboard_html(state, input_path=None, timestamp=None, audit_path=N
                ``.score-audit.jsonl`` file next to the contract.
         cases_dir: golden case directory for the manifest hash. A missing
                directory is recorded as ``unavailable``.
+        input_sha256: SHA-256 of the contract bytes already analyzed. When this
+               is set, the audit stores it instead of hashing ``input_path``
+               again. Local analysis passes the digest of the snapshot it read
+               before the model calls.
 
     Returns:
         Complete HTML string for the visualization dashboard. The audit is a
@@ -1043,6 +1064,7 @@ def generate_dashboard_html(state, input_path=None, timestamp=None, audit_path=N
         timestamp=timestamp,
         audit_path=audit_path,
         cases_dir=cases_dir,
+        input_sha256=input_sha256,
     )
     return result
 
@@ -1340,16 +1362,29 @@ def _score_audit_body(index, risk, playbook_version, manifest_hash, input_sha256
     }
 
 
-def build_score_audit(state, input_path: str, timestamp: str, cases_dir: str | None = None) -> AuditLog:
+def build_score_audit(
+    state,
+    input_path: str,
+    timestamp: str,
+    cases_dir: str | None = None,
+    input_sha256: str | None = None,
+) -> AuditLog:
     """Append one score record per scored risk.
 
     ``input_path`` is the contract file for this ``state``. The caller pairs
-    them; this function hashes that file and does not write it. ``timestamp``
+    them. When ``input_sha256`` is omitted, this function hashes that file and
+    does not write it. Pass ``input_sha256`` when those bytes were already read
+    for analysis, so a later edit is not recorded in their place. ``timestamp``
     is required (``YYYY-MM-DDTHH:MM:SSZ``) so a test run does not depend on the
     clock.
     """
     _require_timestamp(timestamp)
-    digest = file_sha256(input_path)
+    if input_sha256 is None:
+        digest = file_sha256(input_path)
+    elif isinstance(input_sha256, str) and _SHA256_RE.fullmatch(input_sha256):
+        digest = input_sha256
+    else:
+        raise ValueError('input_sha256 must be a lowercase SHA-256 hex digest')
     manifest = golden_manifest_hash(cases_dir)
     data = build_contract_data(state)
     playbook_version = str(data.get('playbookVersion') or 'builtin')
@@ -1416,7 +1451,112 @@ def _default_audit_path(contract_path: str) -> str:
     return os.path.join(directory, stem + AUDIT_SUFFIX)
 
 
-def _record_dashboard_audit(state, input_path, timestamp, audit_path, cases_dir) -> None:
+def _prepare_lock_byte(fd: int) -> None:
+    """Give a Windows byte-range lock one byte to hold. POSIX locks need none.
+
+    Two processes can both see an empty file and each append a byte. The lock
+    is always the first byte, so the extra byte does not weaken it.
+    """
+    if os.lseek(fd, 0, os.SEEK_END) == 0:
+        os.write(fd, b'\0')
+    os.lseek(fd, 0, os.SEEK_SET)
+
+
+def _win_lock(fd: int, mode_name: str) -> None:
+    """Byte-range lock. ``mode_name`` is ``LK_LOCK`` or ``LK_UNLCK``."""
+    if _msvcrt is None:
+        raise OSError('Windows file locking is unavailable')
+    # Attribute access fails type-checking here: the Windows msvcrt stub is not
+    # available on the Linux type-check run.
+    locking = getattr(_msvcrt, 'locking')  # noqa: B009
+    locking(fd, getattr(_msvcrt, mode_name), 1)
+
+
+def _acquire_exclusive_lock(fd: int) -> None:
+    """Block until this process holds the lock on ``fd``.
+
+    The Windows lock waits about ten seconds, then raises. The score file is
+    left unchanged, so a timed-out build does not reuse a record id.
+    """
+    if os.name == 'nt':
+        _prepare_lock_byte(fd)
+        _win_lock(fd, 'LK_LOCK')
+        return
+    if _fcntl is None:
+        raise OSError('POSIX file locking is unavailable')
+    _fcntl.flock(fd, _fcntl.LOCK_EX)
+
+
+def _release_exclusive_lock(fd: int) -> None:
+    """Release a lock taken by ``_acquire_exclusive_lock``."""
+    if os.name == 'nt':
+        os.lseek(fd, 0, os.SEEK_SET)
+        _win_lock(fd, 'LK_UNLCK')
+        return
+    if _fcntl is None:
+        raise OSError('POSIX file locking is unavailable')
+    _fcntl.flock(fd, _fcntl.LOCK_UN)
+
+
+class _InterprocessLock:
+    """Exclusive lock across processes for one audit sidecar.
+
+    The lock file is kept after the write. Removing it would let a new file
+    race with a process that still holds the old one. Closing the descriptor
+    releases the lock, including when the process crashes. ``O_NOFOLLOW``
+    refuses a symlink at the lock path on systems that support that flag.
+    """
+
+    def __init__(self, path: str) -> None:
+        self._path = path
+        self._fd: int | None = None
+
+    def __enter__(self) -> "_InterprocessLock":
+        flags = os.O_RDWR | os.O_CREAT | getattr(os, 'O_NOFOLLOW', 0)
+        fd = os.open(self._path, flags, 0o600)
+        try:
+            _acquire_exclusive_lock(fd)
+        except BaseException:
+            os.close(fd)
+            raise
+        self._fd = fd
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        fd = self._fd
+        self._fd = None
+        if fd is None:
+            return
+        try:
+            _release_exclusive_lock(fd)
+        finally:
+            os.close(fd)
+
+
+def _snapshot_sha256(state, input_sha256: str | None) -> str | None:
+    """Digest of the bytes already analyzed, when the caller captured one.
+
+    An explicit digest wins. Otherwise a local-model run stores the digest on
+    ``state['local_llm']['input_file_sha256']`` from the single read that fed
+    the model. A value that is present but not a lowercase SHA-256 digest is
+    refused. Callers that did not snapshot still hash the path.
+    """
+    if input_sha256 is not None:
+        return input_sha256
+    if not isinstance(state, dict):
+        return None
+    info = state.get('local_llm')
+    if not isinstance(info, dict) or 'input_file_sha256' not in info:
+        return None
+    snapshot = info.get('input_file_sha256')
+    if isinstance(snapshot, str) and _SHA256_RE.fullmatch(snapshot):
+        return snapshot
+    raise ValueError('input_sha256 must be a lowercase SHA-256 hex digest')
+
+
+def _record_dashboard_audit(
+    state, input_path, timestamp, audit_path, cases_dir, input_sha256=None,
+) -> None:
     """Append score records for this analysis. Does not touch the HTML."""
     contract_path = _contract_path_for_audit(state, input_path)
     if contract_path is None:
@@ -1426,38 +1566,49 @@ def _record_dashboard_audit(state, input_path, timestamp, audit_path, cases_dir)
     hashed = _hashable_contract_path(contract_path)
     if _paths_are_same(hashed, destination) or _paths_are_same(contract_path, destination):
         raise ValueError('audit log path must be different from the contract file')
-    fresh = build_score_audit(state, hashed, when, cases_dir=cases_dir)
-    if os.path.exists(destination):
-        log = AuditLog.load(destination)
-    else:
-        log = AuditLog()
-    already = len(log.records())
-    seen = {record['riskId']: record for record in log.records() if record['event'] == 'score'}
-    for record in fresh.records():
-        prior = seen.get(record['riskId'])
-        body = {key: value for key, value in record.items() if key != 'recordId'}
-        if prior is None:
-            log.append(body)
-            continue
-        # Keep the original score. The same contract and clause with the same
-        # score is a re-run. A different contract, clause, or score is refused
-        # before any new line is written, so the page is not returned either.
-        mismatched = [field for field in _PROVENANCE_FIELDS if prior.get(field) != record.get(field)]
-        if mismatched:
-            raise ValueError(
-                f"score record for {record['riskId']} already exists with different provenance: "
-                + ', '.join(mismatched)
-            )
-        changed = [
-            field for field in ('likelihood', 'severity', 'score', 'rule')
-            if prior.get(field) != record.get(field)
-        ]
-        if changed:
-            raise ValueError(
-                f"score record for {record['riskId']} already exists with a different score: "
-                + ', '.join(changed)
-            )
-    log.write_new(destination, already)
+    fresh = build_score_audit(
+        state,
+        hashed,
+        when,
+        cases_dir=cases_dir,
+        input_sha256=_snapshot_sha256(state, input_sha256),
+    )
+    # Load, check, and append under one lock. O_APPEND only places the write;
+    # without this, two builds can read the same history and reuse record ids.
+    with _InterprocessLock(destination + '.lock'):
+        if os.path.exists(destination):
+            log = AuditLog.load(destination)
+        else:
+            log = AuditLog()
+        already = len(log.records())
+        seen = {record['riskId']: record for record in log.records() if record['event'] == 'score'}
+        for record in fresh.records():
+            prior = seen.get(record['riskId'])
+            body = {key: value for key, value in record.items() if key != 'recordId'}
+            if prior is None:
+                log.append(body)
+                continue
+            # Keep the original score. The same contract and clause with the same
+            # score is a re-run. A different contract, clause, or score is refused
+            # before any new line is written, so the page is not returned either.
+            mismatched = [
+                field for field in _PROVENANCE_FIELDS if prior.get(field) != record.get(field)
+            ]
+            if mismatched:
+                raise ValueError(
+                    f"score record for {record['riskId']} already exists with different provenance: "
+                    + ', '.join(mismatched)
+                )
+            changed = [
+                field for field in ('likelihood', 'severity', 'score', 'rule')
+                if prior.get(field) != record.get(field)
+            ]
+            if changed:
+                raise ValueError(
+                    f"score record for {record['riskId']} already exists with a different score: "
+                    + ', '.join(changed)
+                )
+        log.write_new(destination, already)
 
 
 if __name__ == '__main__':

@@ -7,10 +7,12 @@ leaves the first one unchanged. The sample contract file is only read.
 
 import hashlib
 import json
+import multiprocessing
 import os
 import re
 import stat
 import sys
+import time
 
 import pytest
 
@@ -683,6 +685,162 @@ def test_dashboard_audit_requires_a_real_contract_path(tmp_path):
             audit_path=str(tmp_path / 'audit.jsonl'),
         )
     assert not (tmp_path / 'audit.jsonl').exists()
+
+
+def _concurrent_dashboard_build(payload):
+    """One dashboard build. A missing sidecar pauses so two builds overlap."""
+    contract, audit, cases, barrier = payload
+    real_exists = os.path.exists
+
+    def slow_exists(path):
+        found = real_exists(path)
+        if path == audit and not found:
+            time.sleep(0.3)
+        return found
+
+    os.path.exists = slow_exists
+    try:
+        barrier.wait(30)
+        generate_dashboard_html(
+            _synthetic_state(),
+            input_path=contract,
+            timestamp=TIMESTAMP,
+            audit_path=audit,
+            cases_dir=cases,
+        )
+    finally:
+        os.path.exists = real_exists
+
+
+def test_concurrent_builds_keep_one_score_record_per_risk(tmp_path):
+    """Two builds of one sidecar must not reuse record ids."""
+    contract = tmp_path / 'synthetic.txt'
+    contract.write_bytes(b'Section 2 synthetic liability text.\n')
+    audit = tmp_path / 'dash.score-audit.jsonl'
+    missing = tmp_path / 'missing-golden'
+    ctx = multiprocessing.get_context('spawn')
+    barrier = ctx.Barrier(2)
+    payload = (str(contract), str(audit), str(missing), barrier)
+    procs = [ctx.Process(target=_concurrent_dashboard_build, args=(payload,)) for _ in range(2)]
+    for proc in procs:
+        proc.start()
+    codes = []
+    for proc in procs:
+        proc.join(30)
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(5)
+            codes.append(None)
+        else:
+            codes.append(proc.exitcode)
+    assert codes == [0, 0]
+    records = AuditLog.load(str(audit)).records()
+    risks = build_contract_data(_synthetic_state())['riskAssessment']
+    scores = [record for record in records if record['event'] == 'score']
+    assert len(scores) == len(risks)
+    assert len({record['riskId'] for record in scores}) == len(scores)
+    assert len({record['recordId'] for record in records}) == len(records)
+    lock_path = tmp_path / 'dash.score-audit.jsonl.lock'
+    assert stat.S_IMODE(lock_path.stat().st_mode) == 0o600
+
+
+def test_analysis_snapshot_on_the_state_is_what_the_audit_stores(tmp_path):
+    contract = tmp_path / 'synthetic.txt'
+    original = b'original synthetic bytes\n'
+    contract.write_bytes(original)
+    digest = hashlib.sha256(original).hexdigest()
+    state = _synthetic_state()
+    state['local_llm'] = {'input_file_sha256': digest}
+    contract.write_bytes(b'changed synthetic bytes\n')
+    audit = tmp_path / 'dash.score-audit.jsonl'
+    generate_dashboard_html(
+        state,
+        input_path=str(contract),
+        timestamp=TIMESTAMP,
+        audit_path=str(audit),
+        cases_dir=str(tmp_path / 'missing-golden'),
+    )
+    stored = AuditLog.load(str(audit)).records()[0]['inputFileSha256']
+    assert stored == digest
+    assert stored != hashlib.sha256(contract.read_bytes()).hexdigest()
+    bad = _synthetic_state()
+    bad['local_llm'] = {'input_file_sha256': 5}
+    with pytest.raises(ValueError, match='input_sha256'):
+        generate_dashboard_html(
+            bad,
+            input_path=str(contract),
+            timestamp=TIMESTAMP,
+            audit_path=str(tmp_path / 'bad.score-audit.jsonl'),
+            cases_dir=str(tmp_path / 'missing-golden'),
+        )
+    assert not (tmp_path / 'bad.score-audit.jsonl').exists()
+
+
+def test_saved_digest_is_kept_when_the_file_later_changes(tmp_path):
+    contract = tmp_path / 'synthetic.txt'
+    contract.write_bytes(b'original synthetic bytes\n')
+    state = _synthetic_state()
+    digest = 'ab' * 32
+    records = build_score_audit(
+        state, str(contract), TIMESTAMP, input_sha256=digest,
+    ).records()
+    assert records[0]['inputFileSha256'] == digest
+    contract.write_bytes(b'changed synthetic bytes\n')
+    again = build_score_audit(
+        state, str(contract), TIMESTAMP, input_sha256=digest,
+    ).records()
+    assert again[0]['inputFileSha256'] == digest
+    with pytest.raises(ValueError, match='input_sha256'):
+        build_score_audit(state, str(contract), TIMESTAMP, input_sha256='ABC')
+
+
+class _FakeMsvcrt:
+    LK_LOCK = 1
+    LK_UNLCK = 0
+
+    def __init__(self):
+        self.calls = []
+
+    def locking(self, fd, mode, nbytes):
+        self.calls.append((mode, nbytes, os.lseek(fd, 0, os.SEEK_CUR)))
+
+
+def test_windows_lock_uses_one_byte_and_does_not_grow_twice(tmp_path, monkeypatch):
+    lock_path = tmp_path / 'audit.jsonl.lock'
+    fake = _FakeMsvcrt()
+    monkeypatch.setattr(gd, '_msvcrt', fake)
+    monkeypatch.setattr(gd.os, 'name', 'nt')
+    with gd._InterprocessLock(str(lock_path)):
+        assert lock_path.read_bytes() == b'\0'
+    assert fake.calls == [(1, 1, 0), (0, 1, 0)]
+    with gd._InterprocessLock(str(lock_path)):
+        pass
+    assert lock_path.read_bytes() == b'\0'
+    assert fake.calls[2] == (1, 1, 0)
+    assert fake.calls[3] == (0, 1, 0)
+
+
+def test_lock_reports_when_the_platform_lock_is_missing(tmp_path, monkeypatch):
+    path = tmp_path / 'missing.lock'
+    fd = os.open(str(path), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        monkeypatch.setattr(gd.os, 'name', 'posix')
+        monkeypatch.setattr(gd, '_fcntl', None)
+        with pytest.raises(OSError, match='POSIX'):
+            gd._acquire_exclusive_lock(fd)
+        with pytest.raises(OSError, match='POSIX'):
+            gd._release_exclusive_lock(fd)
+        with pytest.raises(OSError, match='POSIX'):
+            with gd._InterprocessLock(str(tmp_path / 'via-context.lock')):
+                pass
+        monkeypatch.setattr(gd.os, 'name', 'nt')
+        monkeypatch.setattr(gd, '_msvcrt', None)
+        with pytest.raises(OSError, match='Windows'):
+            gd._acquire_exclusive_lock(fd)
+        with pytest.raises(OSError, match='Windows'):
+            gd._release_exclusive_lock(fd)
+    finally:
+        os.close(fd)
 
 
 @pytest.mark.parametrize('field,value', [

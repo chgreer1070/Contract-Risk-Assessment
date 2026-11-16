@@ -89,6 +89,9 @@ These are exactly the CI jobs. Everything runs on CPU with no network or model.
   `unavailable` (the notebook download does not include that folder). A later
   override appends a second record and must keep the same contract hash, clause
   reference, manifest, and version fields. The first record is never rewritten.
+  Two builds that share one log take an interprocess lock for the reload, the
+  checks, and the append, so record ids are not reused. Local analysis stores
+  the SHA-256 of the contract bytes it read before the model calls.
   Proof fixture: `golden/fixtures/acme_widget_supply_audit.json`.
 - **Accessibility:** interactive elements need labels/roles/keyboard support;
   status changes should use the existing `aria-live` `announce()`.
