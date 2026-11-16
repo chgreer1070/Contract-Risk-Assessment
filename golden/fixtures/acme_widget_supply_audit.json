@@ -1,0 +1,62 @@
+{
+  "sampleContract": "golden/sample/acme_widget_supply.txt",
+  "inputFileSha256": "1843273fdb2e42effa81b7be238d1ce18be8fb4e91121e3f56b24ed084d84dee",
+  "scoredRiskCount": 3,
+  "recordCount": 3,
+  "records": [
+    {
+      "recordId": "AR-001",
+      "event": "score",
+      "riskId": "RK-001",
+      "clauseReference": "Section 8.1 - Liability",
+      "likelihood": "Likely",
+      "severity": "High",
+      "score": 9,
+      "playbookVersion": "2026-08-01",
+      "scorerVersion": "scorer-3x3-1",
+      "goldenManifestHash": "3f91d54ef647a0807ab85d16ab9b31e5533d6dac367718e5f93667114c60bf83",
+      "inputFileSha256": "1843273fdb2e42effa81b7be238d1ce18be8fb4e91121e3f56b24ed084d84dee",
+      "timestamp": "2026-11-16T00:00:00Z",
+      "rule": {
+        "id": "RISK_MATRIX",
+        "evidence": "RISK_MATRIX[High][Likely] = 9 after canonical severity and likelihood. Playbook entry: limitation_of_liability."
+      }
+    },
+    {
+      "recordId": "AR-002",
+      "event": "score",
+      "riskId": "RK-002",
+      "clauseReference": "Section 6.1 - Data Protection",
+      "likelihood": "Possible",
+      "severity": "Medium",
+      "score": 5,
+      "playbookVersion": "2026-08-01",
+      "scorerVersion": "scorer-3x3-1",
+      "goldenManifestHash": "3f91d54ef647a0807ab85d16ab9b31e5533d6dac367718e5f93667114c60bf83",
+      "inputFileSha256": "1843273fdb2e42effa81b7be238d1ce18be8fb4e91121e3f56b24ed084d84dee",
+      "timestamp": "2026-11-16T00:00:00Z",
+      "rule": {
+        "id": "RISK_MATRIX",
+        "evidence": "RISK_MATRIX[Medium][Possible] = 5 after canonical severity and likelihood. Playbook entry: data_protection."
+      }
+    },
+    {
+      "recordId": "AR-003",
+      "event": "score",
+      "riskId": "RK-003",
+      "clauseReference": "Section 4.2 - Confidentiality",
+      "likelihood": "Unlikely",
+      "severity": "Low",
+      "score": 2,
+      "playbookVersion": "2026-08-01",
+      "scorerVersion": "scorer-3x3-1",
+      "goldenManifestHash": "3f91d54ef647a0807ab85d16ab9b31e5533d6dac367718e5f93667114c60bf83",
+      "inputFileSha256": "1843273fdb2e42effa81b7be238d1ce18be8fb4e91121e3f56b24ed084d84dee",
+      "timestamp": "2026-11-16T00:00:00Z",
+      "rule": {
+        "id": "RISK_MATRIX",
+        "evidence": "RISK_MATRIX[Low][Unlikely] = 2 after canonical severity and likelihood. Playbook entry: confidentiality."
+      }
+    }
+  ]
+}

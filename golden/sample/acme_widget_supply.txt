@@ -1,0 +1,12 @@
+SYNTHETIC CONTRACT FOR TESTS ONLY
+Parties: Example Buyer LLC and Example Supplier LLC
+This text is invented. It is not a real agreement and names no real customer.
+
+Section 8.1 Liability
+Provider's total aggregate liability shall not exceed the fees paid.
+
+Section 6.1 Data Protection
+Provider shall notify Client of any data breach within 72 hours.
+
+Section 4.2 Confidentiality
+Each party shall keep the other's information confidential for three years.

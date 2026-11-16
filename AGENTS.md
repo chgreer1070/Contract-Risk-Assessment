@@ -78,6 +78,13 @@ These are exactly the CI jobs. Everything runs on CPU with no network or model.
   through `generate_dashboard_html` so the static page still renders them.
 - **Determinism:** scoring and confidence are pure functions of the input; do not
   add randomness or network calls. New behaviour needs tests in `tests/`.
+- **Score audit:** `build_score_audit` appends one immutable score record per
+  scored risk (risk id, clause reference, likelihood, severity, score, playbook
+  version, scorer version, golden-case manifest hash, input file SHA-256,
+  timestamp, and the matrix rule that produced the score). A later override
+  appends a second record; the first record is never rewritten. Do not embed
+  the log in the dashboard HTML. Proof fixture:
+  `golden/fixtures/acme_widget_supply_audit.json`.
 - **Accessibility:** interactive elements need labels/roles/keyboard support;
   status changes should use the existing `aria-live` `announce()`.
 - **Playbooks** are data, not code: add clause types in `playbooks/*.json` and
