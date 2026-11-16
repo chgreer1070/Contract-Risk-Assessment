@@ -42,9 +42,13 @@ Non-goals
   to reproduce the score. `generate_dashboard_html` writes that log next to the
   analysis, not into the dashboard page. If `golden/cases` is not on disk (the
   standalone notebook download), the manifest field is `unavailable`. A human
-  override is a later record for the same risk id and must keep the original
-  contract hash and clause reference; the original score record is not rewritten.
-  Override workflow remains future work.
+  override is a later record for the same risk id (`write_human_override`). It
+  stores the reviewer, the old action band, the new action band, a non-empty
+  rationale, a timestamp, and the original score record id. The original score
+  record is not rewritten. An override is rejected when the rationale is
+  missing or blank, the original record id is unknown, the band is unchanged,
+  or the contract hash or clause reference differs from the original score
+  record. A rejected override leaves the history file unchanged.
 
 ### 2.2 Non-functional
 - NFR1 Determinism where possible: schema/regex/citation checks are code, not model calls ([futureagi.com](https://futureagi.com/blog/contract-review-rag-build-evaluate-2026/)).

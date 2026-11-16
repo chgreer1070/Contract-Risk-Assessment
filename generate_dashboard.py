@@ -1069,10 +1069,12 @@ def generate_dashboard_html(
     return result
 
 
-# --- Append-only score audit (CRA-01 In-3) -----------------------------------
-# One record is appended per scored risk. A later human override (In-4) appends
-# a second record for the same risk id. Nothing in this log rewrites or deletes
-# an earlier record. The log is not embedded in the dashboard HTML.
+# --- Append-only score audit (CRA-01 In-3) and human override (In-4) ---------
+# One record is appended per scored risk. A human override appends its own
+# later record for the same risk id. That record carries the reviewer, the old
+# band, the new band, a non-empty rationale, a timestamp, and the original
+# score record id. Nothing in this log rewrites or deletes an earlier record.
+# The log is not embedded in the dashboard HTML.
 
 SCORER_VERSION = 'scorer-3x3-1'
 # Stored when the notebook download has no golden/cases directory. This is not
@@ -1095,6 +1097,18 @@ AUDIT_FIELDS = (
     'timestamp',
     'rule',
 )
+# Human-override fields. Score records do not carry these, so an override cannot
+# be written by editing the original line. ``oldBand`` is the action band of the
+# stored score (the same thresholds as the dashboard, without a later mandatory
+# escalation, which the score record does not store).
+OVERRIDE_FIELDS = (
+    'reviewer',
+    'oldBand',
+    'newBand',
+    'rationale',
+    'originalRecordId',
+)
+ACTION_BANDS = tuple(name for _threshold, name in _BANDS)
 _TIMESTAMP_RE = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$')
 _SHA256_RE = re.compile(r'^[0-9a-f]{64}$')
 _AUDIT_NONEMPTY = (
@@ -1184,12 +1198,44 @@ def _require_matrix_score(record: dict) -> None:
         raise ValueError('rule.evidence must include the matrix cell that produced the score')
 
 
+def _fields_for(event: str) -> tuple[str, ...]:
+    """Field order for one stored line. Score lines stay on ``AUDIT_FIELDS``."""
+    if event == 'override':
+        return AUDIT_FIELDS[:-1] + OVERRIDE_FIELDS + AUDIT_FIELDS[-1:]
+    return AUDIT_FIELDS
+
+
+def _validate_override_shape(record: dict) -> None:
+    """Reject an override that has no reviewer, no rationale, or the same band."""
+    reviewer = record['reviewer']
+    if not isinstance(reviewer, str) or not reviewer.strip():
+        raise ValueError('reviewer must be a non-empty string')
+    rationale = record['rationale']
+    if not isinstance(rationale, str) or not rationale.strip():
+        raise ValueError('rationale must be a non-empty string')
+    original_id = record['originalRecordId']
+    if not isinstance(original_id, str) or not original_id.strip():
+        raise ValueError('unknown original record id')
+    allowed = ', '.join(ACTION_BANDS)
+    old_band = record['oldBand']
+    new_band = record['newBand']
+    if old_band not in ACTION_BANDS:
+        raise ValueError(f'oldBand must be one of {allowed}')
+    if new_band not in ACTION_BANDS:
+        raise ValueError(f'newBand must be one of {allowed}')
+    if new_band == old_band:
+        raise ValueError('override band is unchanged')
+
+
 def _validate_audit_body(record: dict) -> None:
-    missing = [field for field in AUDIT_FIELDS if field != 'recordId' and field not in record]
+    required = _fields_for(record['event']) if record.get('event') in AUDIT_EVENTS else AUDIT_FIELDS
+    missing = [field for field in required if field != 'recordId' and field not in record]
     if missing:
         raise ValueError('audit record missing fields: ' + ', '.join(missing))
     if record['event'] not in AUDIT_EVENTS:
         raise ValueError(f'event must be one of {AUDIT_EVENTS}')
+    if record['event'] == 'override':
+        _validate_override_shape(record)
     _require_timestamp(record['timestamp'])
     manifest = record['goldenManifestHash']
     if manifest != GOLDEN_MANIFEST_UNAVAILABLE and (
@@ -1226,7 +1272,8 @@ class AuditLog:
 
     ``append`` copies the record, assigns the next record id, and stores it.
     There is no update or delete. ``records`` returns copies, so changing a
-    returned dict does not change the log.
+    returned dict does not change the log. ``append_human_override`` adds one
+    override record that points at the original score record.
     """
 
     def __init__(self) -> None:
@@ -1251,10 +1298,55 @@ class AuditLog:
             raise ValueError(f"override requires a score record for {stored['riskId']}")
         if stored['event'] == 'override':
             _require_matching_provenance(stored, same_risk)
+            _require_original_link(stored, self._records)
         stored['recordId'] = f'AR-{len(self._records) + 1:03d}'
-        ordered = {key: stored[key] for key in AUDIT_FIELDS}
+        ordered = {key: stored[key] for key in _fields_for(stored['event'])}
         self._records.append(ordered)
         return _copy_json(ordered)
+
+    def append_human_override(
+        self,
+        *,
+        original_record_id: str,
+        reviewer: str,
+        new_band: str,
+        rationale: str,
+        timestamp: str,
+        clause_reference: str | None = None,
+        input_file_sha256: str | None = None,
+    ) -> dict:
+        """Append one human override. The original score record is not edited.
+
+        ``oldBand`` is taken from the original score. ``new_band`` must be a
+        different action band. A different clause or contract hash is rejected
+        by the same provenance check as any other override.
+        """
+        original = _score_record_by_id(self._records, original_record_id)
+        evidence = rationale if isinstance(rationale, str) and rationale.strip() else 'unset'
+        body = {
+            'event': 'override',
+            'riskId': original['riskId'],
+            'clauseReference': (
+                original['clauseReference'] if clause_reference is None else clause_reference
+            ),
+            'likelihood': original['likelihood'],
+            'severity': original['severity'],
+            'score': original['score'],
+            'playbookVersion': original['playbookVersion'],
+            'scorerVersion': original['scorerVersion'],
+            'goldenManifestHash': original['goldenManifestHash'],
+            'inputFileSha256': (
+                original['inputFileSha256'] if input_file_sha256 is None else input_file_sha256
+            ),
+            'timestamp': timestamp,
+            'reviewer': reviewer,
+            'oldBand': _band_for(original['score']),
+            'newBand': new_band,
+            'rationale': rationale,
+            'originalRecordId': original['recordId'],
+            'rule': {'id': 'human_override', 'evidence': evidence},
+        }
+        return self.append(body)
 
     @classmethod
     def load(cls, path: str) -> "AuditLog":
@@ -1325,6 +1417,38 @@ def _require_matching_provenance(stored: dict, same_risk: list[dict]) -> None:
         raise ValueError(
             'override provenance does not match the score record for '
             f"{stored['riskId']}: " + ', '.join(mismatched)
+        )
+
+
+def _score_record_by_id(records: list[dict], original_record_id: object) -> dict:
+    """Return the score record with this id, or reject an unknown id."""
+    if not isinstance(original_record_id, str) or not original_record_id.strip():
+        raise ValueError('unknown original record id')
+    original = next(
+        (
+            item for item in records
+            if item['recordId'] == original_record_id and item['event'] == 'score'
+        ),
+        None,
+    )
+    if original is None:
+        raise ValueError(f'unknown original record id: {original_record_id}')
+    return original
+
+
+def _require_original_link(stored: dict, records: list[dict]) -> None:
+    """The override must point at the score record for the same risk.
+
+    ``oldBand`` has to be the band of that stored score, so a caller cannot
+    rewrite what the original line said.
+    """
+    original = _score_record_by_id(records, stored.get('originalRecordId'))
+    if original['riskId'] != stored['riskId']:
+        raise ValueError(f"unknown original record id: {stored.get('originalRecordId')}")
+    expected = _band_for(original['score'])
+    if stored['oldBand'] != expected:
+        raise ValueError(
+            f"oldBand {stored['oldBand']} does not match the original score band {expected}"
         )
 
 
@@ -1609,6 +1733,42 @@ def _record_dashboard_audit(
                     + ', '.join(changed)
                 )
         log.write_new(destination, already)
+
+
+def write_human_override(
+    audit_path: str,
+    *,
+    original_record_id: str,
+    reviewer: str,
+    new_band: str,
+    rationale: str,
+    timestamp: str,
+    clause_reference: str | None = None,
+    input_file_sha256: str | None = None,
+) -> dict:
+    """Append one human override to an existing score history file.
+
+    Uses the same lock and append-only writer as scoring. A rejected override
+    (missing rationale, unknown original id, unchanged band, or a different
+    contract or clause) does not add a line. The original score line is never
+    rewritten.
+    """
+    if not os.path.isfile(audit_path):
+        raise ValueError(f'unknown original record id: {original_record_id}')
+    with _InterprocessLock(audit_path + '.lock'):
+        log = AuditLog.load(audit_path)
+        already = len(log.records())
+        stored = log.append_human_override(
+            original_record_id=original_record_id,
+            reviewer=reviewer,
+            new_band=new_band,
+            rationale=rationale,
+            timestamp=timestamp,
+            clause_reference=clause_reference,
+            input_file_sha256=input_file_sha256,
+        )
+        log.write_new(audit_path, already)
+        return stored
 
 
 if __name__ == '__main__':

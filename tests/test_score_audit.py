@@ -1,8 +1,9 @@
-"""Append-only score audit records (CRA-01 In-3 / AC4).
+"""Append-only score audit records (CRA-01 In-3 / AC4 and In-4 / AC5).
 
 Every scored risk in the sample build has exactly one score record, and that
-record carries every In-3 field. A later override appends a second record and
-leaves the first one unchanged. The sample contract file is only read.
+record carries every In-3 field. A later human override appends its own record
+and leaves the first one byte-for-byte unchanged. The sample contract file is
+only read. Override cases below the sample fixture use synthetic data only.
 """
 
 import hashlib
@@ -210,6 +211,11 @@ def test_override_appends_a_second_record_without_changing_the_first():
         'goldenManifestHash': score['goldenManifestHash'],
         'inputFileSha256': score['inputFileSha256'],
         'timestamp': '2026-11-16T00:00:01Z',
+        'reviewer': 'Synthetic Reviewer',
+        'oldBand': 'Walk',
+        'newBand': 'Negotiate',
+        'rationale': 'Reviewer recorded a different score.',
+        'originalRecordId': score['recordId'],
         'rule': {'id': 'human_override', 'evidence': 'Reviewer recorded a different score.'},
     })
     after = log.records()
@@ -266,8 +272,18 @@ def test_second_score_for_the_same_risk_is_rejected():
 
 def test_override_requires_an_existing_score_record():
     log = AuditLog()
+    source = {
+        'recordId': 'AR-001',
+        'riskId': 'RK-001',
+        'clauseReference': 'Section 1',
+        'score': 9,
+        'playbookVersion': '2026-08-01',
+        'scorerVersion': 'scorer-3x3-1',
+        'goldenManifestHash': 'a' * 64,
+        'inputFileSha256': 'b' * 64,
+    }
     with pytest.raises(ValueError, match='override requires'):
-        log.append(_body(event='override'))
+        log.append(_override_from(source))
     assert log.records() == []
 
 
@@ -353,6 +369,8 @@ def _synthetic_state(clause='Section 2'):
 
 
 def _override_from(source, **overrides):
+    old_band = gd._band_for(source['score'])
+    new_band = 'Accept' if old_band != 'Accept' else 'Negotiate'
     body = {
         'event': 'override',
         'riskId': source['riskId'],
@@ -365,6 +383,11 @@ def _override_from(source, **overrides):
         'goldenManifestHash': source['goldenManifestHash'],
         'inputFileSha256': source['inputFileSha256'],
         'timestamp': '2026-11-16T00:00:01Z',
+        'reviewer': 'Synthetic Reviewer',
+        'oldBand': old_band,
+        'newBand': new_band,
+        'rationale': 'Synthetic reviewer note.',
+        'originalRecordId': source['recordId'],
         'rule': {'id': 'human_override', 'evidence': 'Synthetic reviewer note.'},
     }
     body.update(overrides)
@@ -856,4 +879,186 @@ def test_override_rejects_mismatched_provenance(field, value):
     before = log.records()
     with pytest.raises(ValueError, match='provenance'):
         log.append(_override_from(score, **{field: value}))
+    assert log.records() == before
+
+
+def _one_risk_audit(tmp_path):
+    """One synthetic contract and its single score record. No real contract text."""
+    contract = tmp_path / 'synthetic.txt'
+    contract.write_bytes(b'Section 2. Synthetic liability clause for an invented vendor.\n')
+    audit = tmp_path / 'synthetic.score-audit.jsonl'
+    generate_dashboard_html(
+        _synthetic_state('Section 2'),
+        input_path=str(contract),
+        timestamp=TIMESTAMP,
+        audit_path=str(audit),
+        cases_dir=str(tmp_path / 'missing-golden'),
+    )
+    return audit
+
+
+def _ac5_override(**kwargs):
+    payload = {
+        'original_record_id': 'AR-001',
+        'reviewer': 'Synthetic Reviewer',
+        'new_band': 'Escalate',
+        'rationale': 'Synthetic review: the action band should be Escalate.',
+        'timestamp': '2026-11-16T01:00:00Z',
+    }
+    payload.update(kwargs)
+    return payload
+
+
+def test_ac5_human_override_keeps_original_score_record_bytes(tmp_path):
+    """CRA-01 In-4 / AC5.
+
+    Before the override there is 1 record for the risk. After it there are 2.
+    The first record is byte-for-byte unchanged.
+    """
+    audit = _one_risk_audit(tmp_path)
+    before_bytes = audit.read_bytes()
+    before = AuditLog.load(str(audit)).records()
+    assert len(before) == 1
+    assert before[0]['event'] == 'score'
+    assert before[0]['riskId'] == 'RK-001'
+    assert before[0]['score'] == 5
+    assert 'oldBand' not in before[0]
+
+    stored = gd.write_human_override(str(audit), **_ac5_override())
+    after_bytes = audit.read_bytes()
+    after = AuditLog.load(str(audit)).records()
+    same_risk = [record for record in after if record['riskId'] == 'RK-001']
+
+    assert len(same_risk) == 2
+    assert after_bytes[:len(before_bytes)] == before_bytes
+    assert after_bytes.splitlines(keepends=True)[0] == before_bytes
+    assert after[0] == before[0]
+    assert json.dumps(after[0], ensure_ascii=False).encode('utf-8') + b'\n' == before_bytes
+    assert stored['recordId'] == 'AR-002'
+    assert stored['event'] == 'override'
+    assert stored['originalRecordId'] == before[0]['recordId']
+    assert stored['reviewer'] == 'Synthetic Reviewer'
+    assert stored['oldBand'] == 'Negotiate'
+    assert stored['newBand'] == 'Escalate'
+    assert stored['rationale'] == 'Synthetic review: the action band should be Escalate.'
+    assert stored['timestamp'] == '2026-11-16T01:00:00Z'
+    assert stored['clauseReference'] == before[0]['clauseReference']
+    assert stored['inputFileSha256'] == before[0]['inputFileSha256']
+    assert after[1] == stored
+
+
+@pytest.mark.parametrize('kwargs,match', [
+    ({'rationale': ''}, 'rationale'),
+    ({'rationale': '   '}, 'rationale'),
+    ({'rationale': None}, 'rationale'),
+    ({'original_record_id': None}, 'unknown original record id'),
+    ({'original_record_id': 'AR-999'}, 'unknown original record id'),
+    ({'original_record_id': ''}, 'unknown original record id'),
+    ({'original_record_id': 'AR-002'}, 'unknown original record id'),
+    ({'new_band': 'Negotiate'}, 'unchanged'),
+    ({'new_band': 'High'}, 'newBand'),
+    ({'reviewer': '   '}, 'reviewer'),
+    ({'reviewer': None}, 'reviewer'),
+    ({'clause_reference': 'Section 99'}, 'provenance'),
+    ({'input_file_sha256': 'c' * 64}, 'provenance'),
+])
+def test_ac5_rejected_override_leaves_the_history_file_unchanged(tmp_path, kwargs, match):
+    audit = _one_risk_audit(tmp_path)
+    before = audit.read_bytes()
+    with pytest.raises(ValueError, match=match):
+        gd.write_human_override(str(audit), **_ac5_override(**kwargs))
+    assert audit.read_bytes() == before
+    reloaded = AuditLog.load(str(audit)).records()
+    assert len(reloaded) == 1
+    assert reloaded[0]['event'] == 'score'
+
+
+def test_ac5_blank_original_record_id_on_the_record_is_rejected():
+    log = AuditLog()
+    score = log.append(_body())
+    before = log.records()
+    for blank in ('', '   ', None):
+        with pytest.raises(ValueError, match='unknown original record id'):
+            log.append(_override_from(score, originalRecordId=blank))
+    assert log.records() == before
+
+
+def test_ac5_empty_history_file_rejects_an_unknown_original(tmp_path):
+    audit = tmp_path / 'empty.score-audit.jsonl'
+    audit.write_bytes(b'')
+    before = audit.read_bytes()
+    with pytest.raises(ValueError, match='unknown original record id'):
+        gd.write_human_override(str(audit), **_ac5_override())
+    assert audit.read_bytes() == before
+
+
+def test_ac5_override_does_not_follow_a_symlink(tmp_path):
+    target = tmp_path / 'keep.jsonl'
+    target.write_text('keep\n', encoding='utf-8')
+    link = tmp_path / 'audit.jsonl'
+    link.symlink_to(target)
+    with pytest.raises(OSError):
+        gd.write_human_override(str(link), **_ac5_override())
+    assert target.read_text(encoding='utf-8') == 'keep\n'
+
+
+def test_ac5_missing_rationale_field_does_not_append(tmp_path):
+    audit = _one_risk_audit(tmp_path)
+    before = audit.read_bytes()
+    log = AuditLog.load(str(audit))
+    body = _override_from(log.records()[0], newBand='Escalate')
+    del body['rationale']
+    with pytest.raises(ValueError, match='rationale'):
+        log.append(body)
+    assert len(log.records()) == 1
+    assert audit.read_bytes() == before
+
+
+def test_ac5_unknown_original_does_not_create_a_history_file(tmp_path):
+    audit = tmp_path / 'missing.score-audit.jsonl'
+    with pytest.raises(ValueError, match='unknown original record id'):
+        gd.write_human_override(str(audit), **_ac5_override())
+    assert not audit.exists()
+    assert not (tmp_path / 'missing.score-audit.jsonl.lock').exists()
+
+
+def test_ac5_override_id_is_not_an_original_record(tmp_path):
+    """A later line cannot be used as the original score record."""
+    audit = _one_risk_audit(tmp_path)
+    gd.write_human_override(str(audit), **_ac5_override())
+    before = audit.read_bytes()
+    with pytest.raises(ValueError, match='unknown original record id'):
+        gd.write_human_override(
+            str(audit),
+            **_ac5_override(original_record_id='AR-002', new_band='Walk'),
+        )
+    assert audit.read_bytes() == before
+    assert len(AuditLog.load(str(audit)).records()) == 2
+
+
+def test_ac5_invalid_old_band_is_rejected():
+    log = AuditLog()
+    score = log.append(_body())
+    before = log.records()
+    with pytest.raises(ValueError, match='oldBand'):
+        log.append(_override_from(score, oldBand='High', newBand='Accept'))
+    assert log.records() == before
+
+
+def test_ac5_old_band_must_match_the_original_score():
+    log = AuditLog()
+    score = log.append(_body())
+    before = log.records()
+    with pytest.raises(ValueError, match='oldBand'):
+        log.append(_override_from(score, oldBand='Accept', newBand='Negotiate'))
+    assert log.records() == before
+
+
+def test_ac5_original_id_from_another_risk_is_unknown():
+    log = AuditLog()
+    first = log.append(_body())
+    second = log.append(_body(riskId='RK-002', clauseReference='Section 2'))
+    before = log.records()
+    with pytest.raises(ValueError, match='unknown original record id'):
+        log.append(_override_from(first, originalRecordId=second['recordId']))
     assert log.records() == before
