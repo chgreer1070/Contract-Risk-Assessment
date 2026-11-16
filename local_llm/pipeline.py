@@ -7,7 +7,7 @@ from typing import Any
 
 from local_llm import prompts
 from local_llm.client import chat, resolve_endpoint
-from local_llm.extract import read_contract
+from local_llm.extract import read_contract_snapshot
 from local_llm.parse import (
     actions_to_md,
     clauses_to_md,
@@ -48,9 +48,10 @@ def analyze_contract(
     """Read a contract, call the local model four times, return dashboard state.
 
     ``chat_fn`` is injectable so tests can run without a real model. Production
-    uses :func:`local_llm.client.chat`.
+    uses :func:`local_llm.client.chat`. ``local_llm['input_file_sha256']`` is the
+    SHA-256 of the file bytes read before the model calls.
     """
-    text, truncated = read_contract(path, max_chars=max_chars)
+    text, truncated, input_sha256 = read_contract_snapshot(path, max_chars=max_chars)
     endpoint = resolve_endpoint(provider, base_url, model, api_key)
     talk = chat_fn or chat
 
@@ -81,6 +82,8 @@ def analyze_contract(
             'base_url': endpoint['base_url'],
             'model': endpoint['model'],
             'truncated': truncated,
+            # Fingerprint of the bytes read above, before any model call.
+            'input_file_sha256': input_sha256,
         },
     }
     return state

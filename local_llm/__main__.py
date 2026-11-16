@@ -45,7 +45,7 @@ def _same_path(left: str, right: str) -> bool:
 
 
 def _cmd_analyze(args: argparse.Namespace) -> int:
-    from generate_dashboard import generate_dashboard_html
+    from generate_dashboard import audit_sidecar_path, generate_dashboard_html
 
     if _same_path(args.input, args.output):
         print('Error: --output must be different from the input contract path.', file=sys.stderr)
@@ -72,10 +72,27 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         print('The model replied, but no structured clauses/risks were parsed. '
               'Try a stronger instruct model or check LM Studio logs.', file=sys.stderr)
         return 2
-    html = generate_dashboard_html(state)
+    # Use the fingerprint taken from the bytes that were analyzed. Hashing the
+    # path again would record a file that may have changed during the model calls.
+    digest = info.get('input_file_sha256')
+    if not isinstance(digest, str):
+        print('Error: the analysis did not keep a fingerprint of the contract file.', file=sys.stderr)
+        return 1
+    audit_path = audit_sidecar_path(args.output)
+    try:
+        html = generate_dashboard_html(
+            state,
+            input_path=args.input,
+            audit_path=audit_path,
+            input_sha256=digest,
+        )
+    except (OSError, ValueError) as exc:
+        print(f'Error: {exc}', file=sys.stderr)
+        return 1
     with open(args.output, 'w', encoding='utf-8') as f:
         f.write(html)
     print(f'Wrote dashboard to {args.output}')
+    print(f'Wrote score audit to {audit_path}')
     return 0
 
 

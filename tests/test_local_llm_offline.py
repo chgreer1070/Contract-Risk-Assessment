@@ -65,7 +65,9 @@ def _write_pdf(tmp_path):
 def _install_pdfplumber(monkeypatch: pytest.MonkeyPatch, pages: list[str | None]) -> None:
     module = types.ModuleType('pdfplumber')
 
-    def open_pdf(_path: str) -> _Pdf:
+    def open_pdf(source: object) -> _Pdf:
+        if isinstance(source, (str, os.PathLike)):
+            raise AssertionError('pdf parser must receive the snapshot bytes, not a path')
         return _Pdf([_Page(text) for text in pages])
 
     module.open = open_pdf  # type: ignore[attr-defined]
@@ -76,7 +78,9 @@ def _install_pypdf(monkeypatch: pytest.MonkeyPatch, pages: list[str | None]) -> 
     module = types.ModuleType('pypdf')
 
     class PdfReader:
-        def __init__(self, _path: str) -> None:
+        def __init__(self, source: object) -> None:
+            if isinstance(source, (str, os.PathLike)):
+                raise AssertionError('pdf parser must receive the snapshot bytes, not a path')
             self.pages = [_Page(text) for text in pages]
 
     module.PdfReader = PdfReader  # type: ignore[attr-defined]

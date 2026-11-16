@@ -78,6 +78,21 @@ These are exactly the CI jobs. Everything runs on CPU with no network or model.
   through `generate_dashboard_html` so the static page still renders them.
 - **Determinism:** scoring and confidence are pure functions of the input; do not
   add randomness or network calls. New behaviour needs tests in `tests/`.
+- **Score audit:** normal scoring (`generate_dashboard_html`, including the
+  local CLI and the notebook `pdf_path`) appends one immutable score record per
+  scored risk. The log is a `.score-audit.jsonl` file next to the dashboard
+  (CLI) or next to the contract (notebook). Do not embed it in the dashboard
+  HTML; the page security hash stays unchanged. Each record stores risk id,
+  clause reference, likelihood, severity, score, playbook version, scorer
+  version, golden-case manifest hash, input file SHA-256, timestamp, and the
+  matrix rule. A missing `golden/cases` directory stores the manifest as
+  `unavailable` (the notebook download does not include that folder). A later
+  override appends a second record and must keep the same contract hash, clause
+  reference, manifest, and version fields. The first record is never rewritten.
+  Two builds that share one log take an interprocess lock for the reload, the
+  checks, and the append, so record ids are not reused. Local analysis stores
+  the SHA-256 of the contract bytes it read before the model calls.
+  Proof fixture: `golden/fixtures/acme_widget_supply_audit.json`.
 - **Accessibility:** interactive elements need labels/roles/keyboard support;
   status changes should use the existing `aria-live` `announce()`.
 - **Playbooks** are data, not code: add clause types in `playbooks/*.json` and

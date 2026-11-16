@@ -37,6 +37,14 @@ Non-goals
 - FR6 **Route** by threshold (fast-lane vs escalate), with mandatory escalations that ignore the numeric score (e.g., compliance).
 - FR7 **Abstain** (route to human) when confidence is low or the clause is out-of-playbook, rather than guessing.
 - FR8 Persist an **audit record** for every clause score and every human override.
+  Score records are implemented as an append-only log (`build_score_audit` in
+  `generate_dashboard.py`): one record per scored risk, with the fields needed
+  to reproduce the score. `generate_dashboard_html` writes that log next to the
+  analysis, not into the dashboard page. If `golden/cases` is not on disk (the
+  standalone notebook download), the manifest field is `unavailable`. A human
+  override is a later record for the same risk id and must keep the original
+  contract hash and clause reference; the original score record is not rewritten.
+  Override workflow remains future work.
 
 ### 2.2 Non-functional
 - NFR1 Determinism where possible: schema/regex/citation checks are code, not model calls ([futureagi.com](https://futureagi.com/blog/contract-review-rag-build-evaluate-2026/)).
