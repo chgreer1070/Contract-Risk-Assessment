@@ -171,7 +171,9 @@ def test_score_must_match_the_matrix():
         'playbookRef': None,
     }
     with pytest.raises(ValueError, match='RISK_MATRIX'):
-        gd._score_audit_body(1, risk, '2026-08-01', 'a' * 64, 'b' * 64, TIMESTAMP)
+        gd._score_audit_body(
+            1, risk, '2026-08-01', 'a' * 64, 'b' * 64, TIMESTAMP, gd.SCORER_VERSION,
+        )
 
 
 def test_returned_records_are_copies():

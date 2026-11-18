@@ -1063,7 +1063,10 @@ def generate_dashboard_html(
             "The template may have changed; the dashboard cannot be generated safely."
         )
 
-    result = inject_reproducibility_stamp(result, reproducibility_fields(data, cases_dir))
+    # One snapshot for the header and for every new score record. A later
+    # change to the golden cases or the playbook must not make those disagree.
+    fields = reproducibility_fields(data, cases_dir)
+    result = inject_reproducibility_stamp(result, fields)
 
     _record_dashboard_audit(
         state,
@@ -1072,6 +1075,7 @@ def generate_dashboard_html(
         audit_path=audit_path,
         cases_dir=cases_dir,
         input_sha256=input_sha256,
+        reproducibility=fields,
     )
     return result
 
@@ -1543,7 +1547,22 @@ def inject_reproducibility_stamp(page: str, fields: dict[str, str]) -> str:
     return page[:start] + updated + page[end:]
 
 
-def _score_audit_body(index, risk, playbook_version, manifest_hash, input_sha256, timestamp):
+def _reproducibility_snapshot(fields: dict) -> dict[str, str]:
+    """Copy the three stamp values so a later change cannot split them."""
+    if not isinstance(fields, dict):
+        raise TypeError('reproducibility snapshot must be a dict')
+    snapshot: dict[str, str] = {}
+    for key in ('playbookVersion', 'scorerVersion', 'goldenManifestHash'):
+        value = fields[key]
+        if not isinstance(value, str):
+            raise TypeError(f'{key} must be a string')
+        snapshot[key] = value
+    return snapshot
+
+
+def _score_audit_body(
+    index, risk, playbook_version, manifest_hash, input_sha256, timestamp, scorer_version,
+):
     """One score record for a risk that has already been scored."""
     severity = risk.get('riskLevel', '')
     likelihood = risk.get('likelihood', '')
@@ -1563,7 +1582,7 @@ def _score_audit_body(index, risk, playbook_version, manifest_hash, input_sha256
         'severity': severity,
         'score': score,
         'playbookVersion': playbook_version,
-        'scorerVersion': SCORER_VERSION,
+        'scorerVersion': scorer_version,
         'goldenManifestHash': manifest_hash,
         'inputFileSha256': input_sha256,
         'timestamp': timestamp,
@@ -1583,6 +1602,7 @@ def build_score_audit(
     timestamp: str,
     cases_dir: str | None = None,
     input_sha256: str | None = None,
+    reproducibility: dict | None = None,
 ) -> AuditLog:
     """Append one score record per scored risk.
 
@@ -1591,7 +1611,10 @@ def build_score_audit(
     does not write it. Pass ``input_sha256`` when those bytes were already read
     for analysis, so a later edit is not recorded in their place. ``timestamp``
     is required (``YYYY-MM-DDTHH:MM:SSZ``) so a test run does not depend on the
-    clock.
+    clock. ``reproducibility`` is the playbook version, scorer version, and
+    golden-set manifest hash already chosen for this build. When it is set,
+    those three values are stored as given and the golden cases are not read
+    again.
     """
     _require_timestamp(timestamp)
     if input_sha256 is None:
@@ -1600,8 +1623,11 @@ def build_score_audit(
         digest = input_sha256
     else:
         raise ValueError('input_sha256 must be a lowercase SHA-256 hex digest')
+    # Freeze a caller snapshot before scoring reads the playbook again.
+    fields = None if reproducibility is None else _reproducibility_snapshot(reproducibility)
     data = build_contract_data(state)
-    fields = reproducibility_fields(data, cases_dir)
+    if fields is None:
+        fields = reproducibility_fields(data, cases_dir)
     log = AuditLog()
     for index, risk in enumerate(data['riskAssessment'], start=1):
         log.append(_score_audit_body(
@@ -1611,6 +1637,7 @@ def build_score_audit(
             manifest_hash=fields['goldenManifestHash'],
             input_sha256=digest,
             timestamp=timestamp,
+            scorer_version=fields['scorerVersion'],
         ))
     return log
 
@@ -1769,7 +1796,13 @@ def _snapshot_sha256(state, input_sha256: str | None) -> str | None:
 
 
 def _record_dashboard_audit(
-    state, input_path, timestamp, audit_path, cases_dir, input_sha256=None,
+    state,
+    input_path,
+    timestamp,
+    audit_path,
+    cases_dir,
+    input_sha256=None,
+    reproducibility=None,
 ) -> None:
     """Append score records for this analysis. Does not touch the HTML."""
     contract_path = _contract_path_for_audit(state, input_path)
@@ -1786,6 +1819,7 @@ def _record_dashboard_audit(
         when,
         cases_dir=cases_dir,
         input_sha256=_snapshot_sha256(state, input_sha256),
+        reproducibility=reproducibility,
     )
     # Load, check, and append under one lock. O_APPEND only places the write;
     # without this, two builds can read the same history and reuse record ids.

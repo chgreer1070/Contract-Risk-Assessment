@@ -23,6 +23,7 @@ import generate_dashboard as gd  # noqa: E402
 from generate_dashboard import (  # noqa: E402
     AuditLog,
     build_contract_data,
+    build_score_audit,
     format_reproducibility_stamp,
     generate_dashboard_html,
     golden_manifest_hash,
@@ -222,6 +223,87 @@ def test_empty_assessment_still_stamps_the_header():
     assert fields['playbookVersion']
     assert fields['scorerVersion'] == gd.SCORER_VERSION
     assert fields['goldenManifestHash'] == golden_manifest_hash()
+
+
+def test_header_and_score_history_share_one_snapshot(tmp_path, monkeypatch):
+    """A change to the golden cases mid-build must not split the header from the record."""
+    reads = {'manifest': 0}
+
+    def manifest(cases_dir=None):
+        reads['manifest'] += 1
+        if reads['manifest'] > 1:
+            return 'b' * 64
+        return 'a' * 64
+
+    versions = iter(('2026-08-01', '1999-01-01'))
+
+    def playbook(contract_type='default'):
+        try:
+            version = next(versions)
+        except StopIteration:
+            version = '1999-01-01'
+        return {'version': version, 'entries': []}
+
+    monkeypatch.setattr(gd, 'golden_manifest_hash', manifest)
+    monkeypatch.setattr(gd, 'load_playbook', playbook)
+    contract = tmp_path / 'synthetic.txt'
+    contract.write_text('Synthetic only.\n', encoding='utf-8')
+    audit_path = tmp_path / 'dash.score-audit.jsonl'
+    page = generate_dashboard_html(
+        _synthetic_state(),
+        input_path=str(contract),
+        timestamp=TIMESTAMP,
+        audit_path=str(audit_path),
+        cases_dir=str(tmp_path / 'cases'),
+    )
+    record = AuditLog.load(str(audit_path)).records()[0]
+    assert reads['manifest'] == 1
+    assert record['playbookVersion'] == '2026-08-01'
+    assert record['scorerVersion'] == gd.SCORER_VERSION
+    assert record['goldenManifestHash'] == 'a' * 64
+    assert _stamp(page) == format_reproducibility_stamp({
+        'playbookVersion': record['playbookVersion'],
+        'scorerVersion': record['scorerVersion'],
+        'goldenManifestHash': record['goldenManifestHash'],
+    })
+    assert '1999-01-01' not in _stamp(page)
+    assert 'b' * 64 not in page
+
+
+def test_supplied_snapshot_is_stored_and_not_reread(tmp_path, monkeypatch):
+    def boom(cases_dir=None):
+        raise AssertionError('golden cases were read again')
+
+    monkeypatch.setattr(gd, 'golden_manifest_hash', boom)
+    contract = tmp_path / 'synthetic.txt'
+    contract.write_text('Synthetic only.\n', encoding='utf-8')
+    supplied = {
+        'playbookVersion': 'snap-playbook',
+        'scorerVersion': 'snap-scorer',
+        'goldenManifestHash': 'c' * 64,
+    }
+    log = build_score_audit(
+        _synthetic_state(),
+        str(contract),
+        TIMESTAMP,
+        reproducibility=supplied,
+    )
+    supplied['playbookVersion'] = 'changed-after'
+    record = log.records()[0]
+    assert record['playbookVersion'] == 'snap-playbook'
+    assert record['scorerVersion'] == 'snap-scorer'
+    assert record['goldenManifestHash'] == 'c' * 64
+
+
+def test_snapshot_rejects_a_non_string():
+    with pytest.raises(TypeError, match='dict'):
+        gd._reproducibility_snapshot('nope')
+    with pytest.raises(TypeError, match='playbookVersion'):
+        gd._reproducibility_snapshot({
+            'playbookVersion': 1,
+            'scorerVersion': 'scorer-3x3-1',
+            'goldenManifestHash': 'a' * 64,
+        })
 
 
 def test_stamp_does_not_change_the_csp_script_or_style():
