@@ -55,6 +55,10 @@ Non-goals
 ### 2.2 Non-functional
 - NFR1 Determinism where possible: schema/regex/citation checks are code, not model calls ([futureagi.com](https://futureagi.com/blog/contract-review-rag-build-evaluate-2026/)).
 - NFR2 Reproducibility: pin model version, playbook version, and dataset manifest hash on every result ([qaskills.sh](https://qaskills.sh/blog/llm-eval-golden-dataset-versioning)).
+  The dashboard header shows the playbook version, scorer version, and golden-set
+  manifest hash already stored on the score audit record (`unavailable` when the
+  cases directory is missing). That line is escaped static HTML, outside the
+  hashed inline script.
 - NFR3 Observability: one trace per contract with a span per pipeline step (latency, tokens, quality, guardrail events), OpenTelemetry GenAI conventions ([devops.com](https://devops.com/what-you-cannot-see-will-break-your-llm-app-a-practitioner-guide-to-production-observability/)).
 - NFR4 Safety: layered guardrails (input, retrieval, output) with self-correction on failure ([digitalapplied.com](https://www.digitalapplied.com/blog/llm-guardrails-production-safety-layers-reference-2026), [arthur.ai](https://www.arthur.ai/column/what-to-look-for-ai-observability-platform-2026)).
 - NFR5 Security: the dashboard already escapes untrusted contract text and ships a strict CSP; the pipeline must keep contract text out of any executable context.

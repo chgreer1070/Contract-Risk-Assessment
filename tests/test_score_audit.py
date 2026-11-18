@@ -171,7 +171,9 @@ def test_score_must_match_the_matrix():
         'playbookRef': None,
     }
     with pytest.raises(ValueError, match='RISK_MATRIX'):
-        gd._score_audit_body(1, risk, '2026-08-01', 'a' * 64, 'b' * 64, TIMESTAMP)
+        gd._score_audit_body(
+            1, risk, '2026-08-01', 'a' * 64, 'b' * 64, TIMESTAMP, gd.SCORER_VERSION,
+        )
 
 
 def test_returned_records_are_copies():
@@ -425,7 +427,9 @@ def test_generate_dashboard_html_writes_audit_without_changing_html(tmp_path):
     contract.write_bytes(original)
     state = _synthetic_state()
     missing = str(tmp_path / 'missing-golden')
-    plain = generate_dashboard_html(state)
+    # The header stamp includes the manifest, so both pages must use the same
+    # cases directory. Writing the audit file still does not change the HTML.
+    plain = generate_dashboard_html(state, cases_dir=missing)
     audit_path = tmp_path / 'dash.score-audit.jsonl'
     html = generate_dashboard_html(
         state,
