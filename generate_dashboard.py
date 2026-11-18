@@ -10,7 +10,9 @@ Usage:
     html = generate_dashboard_html(output)
     # When that state includes pdf_path, the call also writes
     # ``<contract-name>.score-audit.jsonl`` next to the contract. The HTML
-    # does not contain the audit, so the page security hash stays the same.
+    # header shows the playbook version, scorer version, and golden-set
+    # manifest hash from that record. The audit file itself stays out of the
+    # page, so the page security hash stays the same.
 
     # Save to file:
     with open('dashboard.html', 'w') as f:
@@ -22,6 +24,7 @@ Usage:
 """
 
 import hashlib
+import html
 import json
 import os
 import re
@@ -1006,8 +1009,10 @@ def generate_dashboard_html(
                before the model calls.
 
     Returns:
-        Complete HTML string for the visualization dashboard. The audit is a
-        separate file, never part of the HTML, so the security hash is unchanged.
+        Complete HTML string for the visualization dashboard. The header shows
+        the playbook version, scorer version, and golden-set manifest hash that
+        the score audit stores. The audit file itself is separate and is not
+        embedded, so the security hash is unchanged.
     """
     data = build_contract_data(state)
 
@@ -1058,6 +1063,8 @@ def generate_dashboard_html(
             "The template may have changed; the dashboard cannot be generated safely."
         )
 
+    result = inject_reproducibility_stamp(result, reproducibility_fields(data, cases_dir))
+
     _record_dashboard_audit(
         state,
         input_path=input_path,
@@ -1074,7 +1081,8 @@ def generate_dashboard_html(
 # later record for the same risk id. That record carries the reviewer, the old
 # band, the new band, a non-empty rationale, a timestamp, and the original
 # score record id. Nothing in this log rewrites or deletes an earlier record.
-# The log is not embedded in the dashboard HTML.
+# The log is not embedded in the dashboard HTML. The header stamp shows only
+# the three reproducibility values this log already stores.
 
 SCORER_VERSION = 'scorer-3x3-1'
 # Stored when the notebook download has no golden/cases directory. This is not
@@ -1474,6 +1482,67 @@ def _require_original_link(stored: dict, records: list[dict]) -> None:
         )
 
 
+_REPRO_STAMP_RE = re.compile(
+    r'(<p id="reproStamp" class="subtitle">)(.*?)(</p>)',
+    re.DOTALL,
+)
+_REPRO_STAMP_FIELDS = (
+    ('playbookVersion', 'Playbook version'),
+    ('scorerVersion', 'Scorer version'),
+    ('goldenManifestHash', 'Golden-set manifest hash'),
+)
+
+
+def reproducibility_fields(data: dict, cases_dir: str | None = None) -> dict[str, str]:
+    """The three values stored on every score audit record.
+
+    ``playbookVersion`` is the playbook version already on the scored dashboard
+    data (``builtin`` when that version is missing). ``scorerVersion`` is
+    ``SCORER_VERSION``. ``goldenManifestHash`` is ``golden_manifest_hash``,
+    including ``unavailable`` when the cases directory is missing.
+    """
+    return {
+        'playbookVersion': str(data.get('playbookVersion') or 'builtin'),
+        'scorerVersion': SCORER_VERSION,
+        'goldenManifestHash': golden_manifest_hash(cases_dir),
+    }
+
+
+def format_reproducibility_stamp(fields: dict[str, str]) -> str:
+    """Escaped header text for the three reproducibility values.
+
+    The values are the audit fields. The labels are fixed. ``html.escape``
+    keeps a value from being read as markup.
+    """
+    parts = [
+        f'{label}: {html.escape(str(fields[key]), quote=True)}'
+        for key, label in _REPRO_STAMP_FIELDS
+    ]
+    return '. '.join(parts) + '.'
+
+
+def inject_reproducibility_stamp(page: str, fields: dict[str, str]) -> str:
+    """Replace the header stamp with escaped static HTML.
+
+    Only the first ``<header>`` is edited. This does not touch the hashed
+    inline script or the style block.
+    """
+    text = format_reproducibility_stamp(fields)
+    start = page.find('<header')
+    end = page.find('</header>', start)
+    if start == -1 or end == -1:
+        raise ValueError('dashboard header is missing the reproducibility stamp')
+    header = page[start:end]
+    updated, count = _REPRO_STAMP_RE.subn(
+        lambda match: match.group(1) + text + match.group(3),
+        header,
+        count=1,
+    )
+    if count != 1:
+        raise ValueError('dashboard header is missing the reproducibility stamp')
+    return page[:start] + updated + page[end:]
+
+
 def _score_audit_body(index, risk, playbook_version, manifest_hash, input_sha256, timestamp):
     """One score record for a risk that has already been scored."""
     severity = risk.get('riskLevel', '')
@@ -1531,16 +1600,15 @@ def build_score_audit(
         digest = input_sha256
     else:
         raise ValueError('input_sha256 must be a lowercase SHA-256 hex digest')
-    manifest = golden_manifest_hash(cases_dir)
     data = build_contract_data(state)
-    playbook_version = str(data.get('playbookVersion') or 'builtin')
+    fields = reproducibility_fields(data, cases_dir)
     log = AuditLog()
     for index, risk in enumerate(data['riskAssessment'], start=1):
         log.append(_score_audit_body(
             index=index,
             risk=risk,
-            playbook_version=playbook_version,
-            manifest_hash=manifest,
+            playbook_version=fields['playbookVersion'],
+            manifest_hash=fields['goldenManifestHash'],
             input_sha256=digest,
             timestamp=timestamp,
         ))

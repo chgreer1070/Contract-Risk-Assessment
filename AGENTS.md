@@ -81,8 +81,12 @@ These are exactly the CI jobs. Everything runs on CPU with no network or model.
 - **Score audit:** normal scoring (`generate_dashboard_html`, including the
   local CLI and the notebook `pdf_path`) appends one immutable score record per
   scored risk. The log is a `.score-audit.jsonl` file next to the dashboard
-  (CLI) or next to the contract (notebook). Do not embed it in the dashboard
-  HTML; the page security hash stays unchanged. Each record stores risk id,
+  (CLI) or next to the contract (notebook). Do not embed the log in the
+  dashboard HTML; the page security hash stays unchanged. The header does show
+  the three reproducibility values that log already stores (playbook version,
+  scorer version, and golden-set manifest hash, including `unavailable`). That
+  line is escaped static HTML in `#reproStamp`. Do not add it by editing the
+  hashed inline script or the style block. Each record stores risk id,
   clause reference, likelihood, severity, score, playbook version, scorer
   version, golden-case manifest hash, input file SHA-256, timestamp, and the
   matrix rule. A missing `golden/cases` directory stores the manifest as
