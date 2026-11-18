@@ -50,7 +50,9 @@ You do **not** need Hugging Face tokens, CUDA, Unsloth, or Colab.
    ```
 
    This also writes `dashboard.score-audit.jsonl` beside the dashboard. That
-   file is the score history. It is not inside the HTML page. Running the
+   file is the score history. A human override adds its own later line to that
+   same file and does not change the earlier score line. It is not inside the
+   HTML page. Running the
    command again does not duplicate scores that are already recorded. The
    fingerprint in that history is taken from the contract file at the moment
    analysis starts. If the file changes while the model is still working, the
